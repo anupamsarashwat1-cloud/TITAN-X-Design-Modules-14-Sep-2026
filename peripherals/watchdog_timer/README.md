@@ -2,67 +2,86 @@
 
 ## Description
 
-The **watchdog_timer** module SPDX-License-Identifier: Apache-2.0
- SMVDU-TITAN-X SoC — Watchdog Timer
-`timescale 1ns/1ps
+The `watchdog_timer` is an APB-slave peripheral designed to monitor system health and recover from hangs in the SMVDU-TITAN-X SoC. It features a 32-bit down counter driven by a programmable reload value. The module implements a robust two-stage timeout mechanism: a first expiry generates an interrupt to give the system a chance to recover, while a second consecutive expiry unconditionally asserts a system reset. To prevent accidental modification of critical settings by errant code, the peripheral incorporates a lock-and-key mechanism requiring a specific 32-bit password (`0x1ACCE551`) to be written before its control registers can be altered.
 
 ## Interface
 
 ### Inputs
 
-| Name | Width | Description |
-|------|-------|-------------|
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
+| Signal | Width | Description |
+|--------|-------|-------------|
+| clk    | 1     | System clock |
+| rst_n  | 1     | Active-low asynchronous reset |
+| psel   | 1     | APB select signal |
+| penable| 1     | APB enable signal |
+| pwrite | 1     | APB write enable signal |
+| paddr  | 4     | APB address bus |
+| pwdata | 32    | APB write data bus |
 
 ### Outputs
 
-| Name | Width | Description |
-|------|-------|-------------|
-| reg | 1 | – |
-| wire | 1 | – |
-| reg | 1 | – |
-| wire | 1 | – |
+| Signal | Width | Description |
+|--------|-------|-------------|
+| prdata | 32    | APB read data bus |
+| pready | 1     | APB ready signal, hardwired to 1 |
+| wdt_reset_n | 1| Watchdog reset output; asserts low on a secondary timeout to reset the system |
+| irq    | 1     | Interrupt request output; asserts high on the primary timeout |
 
 ## Functionality
 
-*watchdog_timer provides the hardware implementation for its designated function within the SoC.*
+The core of the watchdog is a 32-bit counter that decrements on every clock cycle when enabled (`wdt_en`). Software configures the timeout period by writing to the `load_val` register. When the counter reaches zero, the module checks `int_stat`. If `int_stat` is 0, the watchdog asserts an interrupt flag (raising `irq` if `int_en` is set), sets `int_stat` to 1, and reloads the counter. If the counter reaches zero again and `int_stat` is already 1, indicating the interrupt was not serviced, the watchdog asserts `wdt_reset_n` low. Software must routinely "kick" the watchdog by writing `0x000000E5` to the service register to reload the counter and clear `int_stat`. All write accesses to the configuration and load registers are blocked unless the unlock register is first written with the magic value `0x1ACCE551`.
 
-## Hierarchical Block Diagram (Mermaid)
+## Hierarchical Block Diagram
 
 ```mermaid
-graph LR
-    classDef sub fill:#f9f,stroke:#333,stroke-width:1px;
-    watchdog_timer[module watchdog_timer]:::sub --> watchdog_timer
-    if[begin if]:::sub --> watchdog_timer
+graph TD
+    subgraph watchdog_timer
+        APB["APB Register Interface"]
+        LOCK["Lock/Key Mechanism"]
+        COUNTER["32-bit Down Counter"]
+        FSM["Timeout Logic"]
+    end
+    APB --> LOCK
+    LOCK --> COUNTER
+    LOCK --> FSM
+    COUNTER --> FSM
 ```
 
-## Full Signal‑Level Diagram (Mermaid)
+## Signal-Level Diagram
 
 ```mermaid
 graph LR
-    classDef sig fill:#eef,stroke:#555,stroke-width:1px;
-    classDef port fill:#cfe,stroke:#333,stroke-width:1px;
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    reg["reg\n(output, 1)"]:::port
-    wire["wire\n(output, 1)"]:::port
-    reg["reg\n(output, 1)"]:::port
-    wire["wire\n(output, 1)"]:::port
-    load_val["load_val\n(reg, 32)"]:::sig
-    count["count\n(reg, 32)"]:::sig
-    wdt_en["wdt_en\n(reg, 1)"]:::sig
-    int_en["int_en\n(reg, 1)"]:::sig
-    int_stat["int_stat\n(reg, 1)"]:::sig
-    unlock["unlock\n(reg, 1)"]:::sig
+    subgraph Inputs
+        clk["clk"]
+        rst_n["rst_n"]
+        psel["psel"]
+        penable["penable"]
+        pwrite["pwrite"]
+        paddr["paddr[3:0]"]
+        pwdata["pwdata[31:0]"]
+    end
+
+    subgraph watchdog_timer
+        CTRL["Internal Logic & Counter"]
+    end
+
+    subgraph Outputs
+        prdata["prdata[31:0]"]
+        pready["pready"]
+        wdt_reset_n["wdt_reset_n"]
+        irq["irq"]
+    end
+
+    clk --> CTRL
+    rst_n --> CTRL
+    psel --> CTRL
+    penable --> CTRL
+    pwrite --> CTRL
+    paddr --> CTRL
+    pwdata --> CTRL
+
+    CTRL --> prdata
+    CTRL --> pready
+    CTRL --> wdt_reset_n
+    CTRL --> irq
 ```

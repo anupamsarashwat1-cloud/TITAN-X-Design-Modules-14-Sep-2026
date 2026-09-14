@@ -1,106 +1,94 @@
+
 # rv_csr
 
 ## Description
-
-The **rv_csr** module SPDX-License-Identifier: Apache-2.0
- SMVDU-TITAN-X SoC — Machine-mode CSR file (Zicsr support, Phase 5 Step 5.4)
-
- Minimal-but-honest M-mode ISA CSR set:
-   mstatus misa mie mtvec mscratch mepc mcause mtval mhartid
-   mcycle/minstret (+ cycle/instret aliases)
-
- Contract with the pipeline (see rv_core_top wiring):
-  - READ is combinational: csr_rdata follows csr_raddr in the same cycle
-    execute samples it (distance-1 RAW between two CSR ops needs no extra
-    forwarding because a younger op reaches EX at least one cycle after an
-    older op's synchronous write lands).
-  - WRITE is synchronous and single-issue: csr_we pulses only on the cycle
-    the owning instruction leaves EX (gated upstream by !stall/!flush/
-    !mul_div_stall), so flushed/stalled instructions never commit state.
-  - Trap entry: core redirects PC to mtvec and captures mepc/mcause via
-    trap_we; mret restores via mret_we (mstatus.MPIE->MIE shuffle here).
-  - Interrupts arrive as mip_* inputs; mip_int raises when pending&enabled.
-    Consumption (mtvec dispatch) is the core's job — this block only
-    reports.
-`timescale 1ns/1ps
-`include "params.vh"
-`include "isa_pkg.vh"
+The `rv_csr` module manages the Machine-mode Control and Status Registers (CSRs) for the RISC-V core. It handles CSR read/write operations, machine trap entry, and trap return (`mret`). The read port is combinational to feed the execute stage immediately, while the write port is synchronous.
 
 ## Interface
 
 ### Inputs
-
-| Name | Width | Description |
-|------|-------|-------------|
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
+| Signal | Width | Description |
+|--------|-------|-------------|
+| clk | 1 | System clock |
+| rst_n | 1 | Active-low asynchronous reset |
+| csr_raddr | 12 | CSR read address |
+| csr_we | 1 | CSR write enable |
+| csr_waddr | 12 | CSR write address |
+| csr_wdata | 64 | CSR write data |
+| trap_we | 1 | Trap write enable (captures pc and cause) |
+| trap_pc | 64 | PC of the trapping instruction |
+| trap_cause | 64 | Exception or interrupt cause |
+| mret_we | 1 | MRET write enable (restores status) |
+| mip_m_ext | 1 | External machine interrupt pending |
+| mip_m_timer | 1 | Timer machine interrupt pending |
+| mip_m_soft | 1 | Software machine interrupt pending |
+| retire_pulse | 1 | Instruction retirement pulse for performance counters |
 
 ### Outputs
-
-| Name | Width | Description |
-|------|-------|-------------|
-| reg | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
+| Signal | Width | Description |
+|--------|-------|-------------|
+| csr_rdata | 64 | CSR read data |
+| mtvec_out | 64 | Machine trap vector base address |
+| mepc_out | 64 | Machine exception program counter |
+| irq_pending | 1 | Global interrupt pending flag |
 
 ## Functionality
+This module maintains core machine state including `mstatus`, `misa`, `mie`, `mtvec`, `mscratch`, `mepc`, `mcause`, `mtval`, and cycle/instruction counters. On a CSR read, it maps the 12-bit address to the internal register. On a CSR write, it selectively updates bits according to WARL rules. When a trap occurs (`trap_we`), it saves the current PC into `mepc`, logs the cause, and disables interrupts in `mstatus`. Conversely, `mret_we` restores previous interrupt enable states.
 
-*rv_csr provides the hardware implementation for its designated function within the SoC.*
-
-## Hierarchical Block Diagram (Mermaid)
-
+## Hierarchical Block Diagram
 ```mermaid
-graph LR
-    classDef sub fill:#f9f,stroke:#333,stroke-width:1px;
-    file[CSR file]:::sub --> rv_csr
-    decode[Read decode]:::sub --> rv_csr
+graph TD
+    subgraph Inputs
+        clk["clk"]
+        rst_n["rst_n"]
+        csr_we["csr_we"]
+        trap_we["trap_we"]
+    end
+    subgraph CSR["rv_csr"]
+        Regs["CSR Register Bank"]
+        TrapLogic["Trap Entry/Return Logic"]
+        ReadMux["Read Decode Mux"]
+    end
+    subgraph Outputs
+        csr_rdata["csr_rdata"]
+        mtvec_out["mtvec_out"]
+    end
+    clk --> Regs
+    rst_n --> Regs
+    csr_we --> Regs
+    trap_we --> TrapLogic
+    TrapLogic --> Regs
+    Regs --> ReadMux
+    ReadMux --> csr_rdata
+    Regs --> mtvec_out
 ```
 
-## Full Signal‑Level Diagram (Mermaid)
-
+## Signal-Level Diagram
 ```mermaid
 graph LR
-    classDef sig fill:#eef,stroke:#555,stroke-width:1px;
-    classDef port fill:#cfe,stroke:#333,stroke-width:1px;
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    reg["reg\n(output, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(output, 1)"]:::port
-    wire["wire\n(output, 1)"]:::port
-    wire["wire\n(output, 1)"]:::port
-    mstatus_q["mstatus_q\n(reg, 64)"]:::sig
-    misa_q["misa_q\n(reg, 64)"]:::sig
-    mie_q["mie_q\n(reg, 64)"]:::sig
-    mtvec_q["mtvec_q\n(reg, 64)"]:::sig
-    mscratch_q["mscratch_q\n(reg, 64)"]:::sig
-    mepc_q["mepc_q\n(reg, 64)"]:::sig
-    mcause_q["mcause_q\n(reg, 64)"]:::sig
-    mtval_q["mtval_q\n(reg, 64)"]:::sig
-    mcycle_q["mcycle_q\n(reg, 64)"]:::sig
-    minstret_q["minstret_q\n(reg, 64)"]:::sig
+    subgraph Inputs
+        raddr["csr_raddr"]
+        waddr["csr_waddr"]
+        wdata["csr_wdata"]
+        trap_pc["trap_pc"]
+    end
+    subgraph CSR["rv_csr"]
+        decode["Address Decode"]
+        storage["Flip-Flops"]
+        mux["Output Mux"]
+    end
+    subgraph Outputs
+        rdata["csr_rdata"]
+        mepc["mepc_out"]
+        irq["irq_pending"]
+    end
+    raddr --> mux
+    waddr --> decode
+    wdata --> storage
+    decode --> storage
+    trap_pc --> storage
+    storage --> mux
+    storage --> mepc
+    storage --> irq
+    mux --> rdata
 ```

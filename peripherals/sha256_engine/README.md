@@ -2,81 +2,86 @@
 
 ## Description
 
-The **sha256_engine** module SPDX-License-Identifier: Apache-2.0
- SMVDU-TITAN-X SoC — SHA-256 Hash Engine
- FIPS 180-4 compliant. 64-round iterative architecture.
-`timescale 1ns/1ps
+The `sha256_engine` is a FIPS 180-4 compliant cryptographic hash accelerator for the SMVDU-TITAN-X SoC. It implements the standard 64-round iterative SHA-256 algorithm entirely in hardware, taking 512-bit message blocks as input to produce a 256-bit message digest. The module is interfaced via an APB bus, allowing the CPU to load the input message block by writing sixteen 32-bit words, trigger the hashing process, and read back the final eight-word hash value. A sliding-window message schedule block and highly optimized round logic allow the engine to complete one compression round per clock cycle, offering significant performance gains over software-based hashing. An interrupt is generated when a block finishes processing.
 
 ## Interface
 
 ### Inputs
 
-| Name | Width | Description |
-|------|-------|-------------|
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
+| Signal | Width | Description |
+|--------|-------|-------------|
+| clk    | 1     | System clock |
+| rst_n  | 1     | Active-low asynchronous reset |
+| psel   | 1     | APB select signal |
+| penable| 1     | APB enable signal |
+| pwrite | 1     | APB write enable signal |
+| paddr  | 8     | APB address bus (8-bit for block and hash access) |
+| pwdata | 32    | APB write data bus |
 
 ### Outputs
 
-| Name | Width | Description |
-|------|-------|-------------|
-| reg | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
+| Signal | Width | Description |
+|--------|-------|-------------|
+| prdata | 32    | APB read data bus |
+| pready | 1     | APB ready signal, hardwired to 1 |
+| irq    | 1     | Interrupt request, asserted for one cycle when hashing completes |
 
 ## Functionality
 
-*sha256_engine provides the hardware implementation for its designated function within the SoC.*
+The peripheral operates by having the host CPU write a 512-bit chunk of the padded message into the internal `msg_block` memory via the APB interface (offsets 0x00 to 0x3C). After loading the data, a write to the start register (offset 0x60) triggers the FSM. Upon starting, the engine initializes its internal state variables (a–h) from the current hash registers (H0–H7) and loads the 16-word message schedule `W` array. For 64 consecutive clock cycles, the compression function logic computes the SHA-256 round equations (using `T1`, `T2`, `Ch`, `Maj`, and bitwise rotations) and advances the message schedule. On round 63, the computed state variables are accumulated into the hash registers, the `active` flag is cleared, and `done` (mapped to `irq`) is pulsed. The CPU can then read the 256-bit digest from offsets 0x40 to 0x5C.
 
-## Hierarchical Block Diagram (Mermaid)
+## Hierarchical Block Diagram
 
 ```mermaid
-graph LR
-    classDef sub fill:#f9f,stroke:#333,stroke-width:1px;
-    sha256_engine[module sha256_engine]:::sub --> sha256_engine
-    values[hash values]:::sub --> sha256_engine
+graph TD
+    subgraph sha256_engine
+        APB["APB Register Interface"]
+        MEM["512-bit Message Block Memory"]
+        MSCHED["Message Schedule Logic (W)"]
+        COMP["Compression Function Logic (a-h)"]
+        HASH["256-bit Hash Accumulator"]
+    end
+    APB --> MEM
+    MEM --> MSCHED
+    MSCHED --> COMP
+    HASH --> COMP
+    COMP --> HASH
+    HASH --> APB
 ```
 
-## Full Signal‑Level Diagram (Mermaid)
+## Signal-Level Diagram
 
 ```mermaid
 graph LR
-    classDef sig fill:#eef,stroke:#555,stroke-width:1px;
-    classDef port fill:#cfe,stroke:#333,stroke-width:1px;
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    reg["reg\n(output, 1)"]:::port
-    wire["wire\n(output, 1)"]:::port
-    wire["wire\n(output, 1)"]:::port
-    a["a\n(reg, 32)"]:::sig
-    b["b\n(reg, 32)"]:::sig
-    c["c\n(reg, 32)"]:::sig
-    d["d\n(reg, 32)"]:::sig
-    e["e\n(reg, 32)"]:::sig
-    f["f\n(reg, 32)"]:::sig
-    g["g\n(reg, 32)"]:::sig
-    h["h\n(reg, 32)"]:::sig
-    round["round\n(reg, 6)"]:::sig
-    active["active\n(reg, 1)"]:::sig
-    done["done\n(reg, 1)"]:::sig
-    start["start\n(reg, 1)"]:::sig
-    T1["T1\n(wire, 32)"]:::sig
-    T2["T2\n(wire, 32)"]:::sig
-    S1["S1\n(wire, 32)"]:::sig
-    S0["S0\n(wire, 32)"]:::sig
-    ch_val["ch_val\n(wire, 32)"]:::sig
-    maj_val["maj_val\n(wire, 32)"]:::sig
-    sig0["sig0\n(wire, 32)"]:::sig
-    sig1["sig1\n(wire, 32)"]:::sig
-    w_sched["w_sched\n(wire, 32)"]:::sig
+    subgraph Inputs
+        clk["clk"]
+        rst_n["rst_n"]
+        psel["psel"]
+        penable["penable"]
+        pwrite["pwrite"]
+        paddr["paddr[7:0]"]
+        pwdata["pwdata[31:0]"]
+    end
+
+    subgraph sha256_engine
+        CTRL["Datapath & FSM"]
+    end
+
+    subgraph Outputs
+        prdata["prdata[31:0]"]
+        pready["pready"]
+        irq["irq"]
+    end
+
+    clk --> CTRL
+    rst_n --> CTRL
+    psel --> CTRL
+    penable --> CTRL
+    pwrite --> CTRL
+    paddr --> CTRL
+    pwdata --> CTRL
+
+    CTRL --> prdata
+    CTRL --> pready
+    CTRL --> irq
 ```

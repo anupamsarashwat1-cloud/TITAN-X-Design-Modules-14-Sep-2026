@@ -2,45 +2,63 @@
 
 ## Description
 
-The **cdc_sync** module SPDX-License-Identifier: Apache-2.0
- SMVDU-TITAN-X SoC — CDC 2-FF Synchronizer
-`timescale 1ns/1ps
+`cdc_sync` is a generic parameterized Clock Domain Crossing (CDC) synchronizer for the SMVDU-TITAN-X SoC. It is designed to safely transfer signals from an asynchronous clock domain into the destination clock domain (`dst_clk`) by passing them through a chain of flip-flops to mitigate metastability. The number of synchronization stages is configurable via the `STAGES` parameter (defaulting to 2), and it can handle arbitrary bus widths via the `WIDTH` parameter. The flip-flops are tagged with the `ASYNC_REG` attribute to guide synthesis tools into packing the synchronizer chain closely, reducing routing delays and maximizing mean time between failures (MTBF).
 
 ## Interface
 
 ### Inputs
 
-| Name | Width | Description |
-|------|-------|-------------|
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
+| Signal | Width | Description |
+|--------|-------|-------------|
+| dst_clk | 1 | Destination clock domain signal |
+| rst_n | 1 | Active-low asynchronous reset |
+| data_in | WIDTH | Input data from the asynchronous/source clock domain |
 
 ### Outputs
 
-| Name | Width | Description |
-|------|-------|-------------|
-| wire | 1 | – |
+| Signal | Width | Description |
+|--------|-------|-------------|
+| data_out | WIDTH | Synchronized data output in the destination clock domain |
 
 ## Functionality
 
-*cdc_sync provides the hardware implementation for its designated function within the SoC.*
+The module implements a shift register of flip-flops parameterized by `STAGES`. Upon the rising edge of `dst_clk`, the first stage `sync_ff[0]` captures the raw, asynchronous `data_in`. On each subsequent cycle, the data propagates to the next stage (`sync_ff[1]`, `sync_ff[2]`, etc.) until it reaches the final stage, which drives `data_out`. If metastability occurs at the first stage, the subsequent stages provide necessary resolution time for the signal to settle to a valid logic level before being consumed by the destination domain logic. During an asynchronous reset (`rst_n` low), every stage in the synchronizer chain is properly cleared to zero.
 
-## Hierarchical Block Diagram (Mermaid)
+## Hierarchical Block Diagram
 
 ```mermaid
-graph LR
-    classDef sub fill:#f9f,stroke:#333,stroke-width:1px;
+graph TD
+    cdc_sync["cdc_sync Module"]
+    FF_Chain["Synchronizer Flip-Flop Chain (STAGES)"]
+    
+    cdc_sync --> FF_Chain
 ```
 
-## Full Signal‑Level Diagram (Mermaid)
+## Signal-Level Diagram
 
 ```mermaid
 graph LR
-    classDef sig fill:#eef,stroke:#555,stroke-width:1px;
-    classDef port fill:#cfe,stroke:#333,stroke-width:1px;
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(output, 1)"]:::port
+    subgraph Inputs
+        dst_clk["dst_clk"]
+        rst_n["rst_n"]
+        data_in["data_in[WIDTH-1:0]"]
+    end
+    
+    subgraph MODULE["cdc_sync"]
+        Stage0["sync_ff[0]"]
+        Stage1["sync_ff[1..STAGES-1]"]
+    end
+    
+    subgraph Outputs
+        data_out["data_out[WIDTH-1:0]"]
+    end
+    
+    dst_clk --> Stage0
+    dst_clk --> Stage1
+    rst_n --> Stage0
+    rst_n --> Stage1
+    
+    data_in --> Stage0
+    Stage0 -->|"Synchronize"| Stage1
+    Stage1 --> data_out
 ```

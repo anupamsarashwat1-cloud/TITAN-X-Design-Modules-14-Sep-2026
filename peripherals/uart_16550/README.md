@@ -2,86 +2,102 @@
 
 ## Description
 
-The **uart_16550** module SPDX-License-Identifier: Apache-2.0
- SMVDU-TITAN-X SoC — MMUART (Multi-Mode UART based on 16550)
- Iteration 3: Added support for LIN, IrDA, and 9-bit data modes.
-`timescale 1ns/1ps
+The `uart_16550` module is a Multi-Mode UART designed for the SMVDU-TITAN-X SoC, building upon the industry-standard 16550 architecture. In addition to conventional asynchronous serial communication, this iteration introduces support for advanced protocols including IrDA (Infrared Data Association), LIN (Local Interconnect Network) bus, and 9-bit data frames. The core provides a standard APB slave interface that implements traditional 16550 memory-mapped registers alongside custom extension registers (`mode_cr`, `nbit_cr`) for configuring the advanced modes. While the complex physical layer processing logic is currently stubbed, the module establishes the structural and memory framework necessary for multiplexing standard TX/RX paths to specialized protocol endpoints.
 
 ## Interface
 
 ### Inputs
 
-| Name | Width | Description |
-|------|-------|-------------|
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
+| Signal | Width | Description |
+|--------|-------|-------------|
+| clk    | 1     | System clock |
+| rst_n  | 1     | Active-low asynchronous reset |
+| paddr  | 32    | APB address bus |
+| psel   | 1     | APB select signal |
+| penable| 1     | APB enable signal |
+| pwrite | 1     | APB write enable signal |
+| pwdata | 32    | APB write data bus |
+| rxd    | 1     | Standard UART receive line |
+| irda_rx| 1     | IrDA receive line |
+| lin_rx | 1     | LIN bus receive line |
 
 ### Outputs
 
-| Name | Width | Description |
-|------|-------|-------------|
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
+| Signal | Width | Description |
+|--------|-------|-------------|
+| prdata | 32    | APB read data bus |
+| pready | 1     | APB ready signal, hardwired to 1 |
+| pslverr| 1     | APB slave error signal, hardwired to 0 |
+| uart_irq | 1   | UART interrupt request line |
+| txd    | 1     | Standard UART transmit line |
+| irda_tx| 1     | IrDA transmit line |
+| lin_tx | 1     | LIN bus transmit line |
 
 ## Functionality
 
-*uart_16550 provides the hardware implementation for its designated function within the SoC.*
+The `uart_16550` core functions as an APB-slave device, decoding register accesses based on the APB address bus. The module implements the conventional 16550 register map, utilizing the Divisor Latch Access Bit (`dlab` from the LCR) to multiplex accesses to the transmit/receive buffers and the baud rate divisor latches (`dll`, `dlm`). It expands upon the standard by introducing `mode_cr` to switch between UART, IrDA, and LIN modes, and `nbit_cr` to toggle 9-bit operation. The actual physical data transmission and reception (baud generation, framing, and serialization) are placeholders in this version, represented by static idle assignments (e.g., driving `txd` high and `irda_tx` low). Software drivers interact with this module identically to a legacy 16550 UART, with the addition of the extended protocol toggles.
 
-## Hierarchical Block Diagram (Mermaid)
+## Hierarchical Block Diagram
 
 ```mermaid
-graph LR
-    classDef sub fill:#f9f,stroke:#333,stroke-width:1px;
-    uart_16550[module uart_16550]:::sub --> uart_16550
+graph TD
+    subgraph uart_16550
+        APB["APB Register Decoder"]
+        REGS["16550 + Extension Registers"]
+        CORE["Multi-Mode UART Core (Stub)"]
+    end
+    APB --> REGS
+    REGS --> CORE
+    CORE -.->|TX/RX Routing| CORE
 ```
 
-## Full Signal‑Level Diagram (Mermaid)
+## Signal-Level Diagram
 
 ```mermaid
 graph LR
-    classDef sig fill:#eef,stroke:#555,stroke-width:1px;
-    classDef port fill:#cfe,stroke:#333,stroke-width:1px;
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(output, 1)"]:::port
-    wire["wire\n(output, 1)"]:::port
-    wire["wire\n(output, 1)"]:::port
-    wire["wire\n(output, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(output, 1)"]:::port
-    wire["wire\n(output, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(output, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    thr_rbr["thr_rbr\n(reg, 8)"]:::sig
-    ier["ier\n(reg, 8)"]:::sig
-    iir_fcr["iir_fcr\n(reg, 8)"]:::sig
-    lcr["lcr\n(reg, 8)"]:::sig
-    mcr["mcr\n(reg, 8)"]:::sig
-    lsr["lsr\n(reg, 8)"]:::sig
-    msr["msr\n(reg, 8)"]:::sig
-    scr["scr\n(reg, 8)"]:::sig
-    dll["dll\n(reg, 8)"]:::sig
-    dlm["dlm\n(reg, 8)"]:::sig
-    mode_cr["mode_cr\n(reg, 8)"]:::sig
-    nbit_cr["nbit_cr\n(reg, 8)"]:::sig
-    prdata_reg["prdata_reg\n(reg, 32)"]:::sig
+    subgraph Inputs
+        clk["clk"]
+        rst_n["rst_n"]
+        paddr["paddr[31:0]"]
+        psel["psel"]
+        penable["penable"]
+        pwrite["pwrite"]
+        pwdata["pwdata[31:0]"]
+        rxd["rxd"]
+        irda_rx["irda_rx"]
+        lin_rx["lin_rx"]
+    end
+
+    subgraph uart_16550
+        LOGIC["Registers & Multiplexing Logic"]
+    end
+
+    subgraph Outputs
+        prdata["prdata[31:0]"]
+        pready["pready"]
+        pslverr["pslverr"]
+        uart_irq["uart_irq"]
+        txd["txd"]
+        irda_tx["irda_tx"]
+        lin_tx["lin_tx"]
+    end
+
+    clk --> LOGIC
+    rst_n --> LOGIC
+    paddr --> LOGIC
+    psel --> LOGIC
+    penable --> LOGIC
+    pwrite --> LOGIC
+    pwdata --> LOGIC
+    rxd --> LOGIC
+    irda_rx --> LOGIC
+    lin_rx --> LOGIC
+
+    LOGIC --> prdata
+    LOGIC --> pready
+    LOGIC --> pslverr
+    LOGIC --> uart_irq
+    LOGIC --> txd
+    LOGIC --> irda_tx
+    LOGIC --> lin_tx
 ```

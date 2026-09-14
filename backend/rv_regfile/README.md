@@ -1,64 +1,87 @@
+
 # rv_regfile
 
 ## Description
-
-The **rv_regfile** module SPDX-License-Identifier: Apache-2.0
- SMVDU-TITAN-X SoC — RV64 Integer Register File (32 × 64-bit)
-
- Two asynchronous read ports, one synchronous write port.
- Write-first bypass: a read of the register being written THIS edge
- returns the incoming data, matching the architectural write-before-read
- ordering consumers expect across the WB->decode feedback path.
- x0 is architecturally hardwired to zero — writes to it are dropped and
- reads always return 0 regardless of stored content.
-`timescale 1ns/1ps
+The `rv_regfile` module is a 32x64-bit general-purpose integer register file for the RV64 architecture. It provides two asynchronous read ports for fetching source operands in the decode stage and one synchronous write port for the writeback stage. It includes an internal write-first bypass to handle structural hazards where an instruction reads a register in the same cycle it is being written.
 
 ## Interface
 
 ### Inputs
-
-| Name | Width | Description |
-|------|-------|-------------|
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
+| Signal | Width | Description |
+|--------|-------|-------------|
+| clk | 1 | System clock |
+| rst_n | 1 | Active-low asynchronous reset |
+| rd_addr1 | 5 | Read port 1 address |
+| rd_addr2 | 5 | Read port 2 address |
+| wr_en | 1 | Write enable |
+| wr_addr | 5 | Write address |
+| wr_data | 64 | Write data |
 
 ### Outputs
-
-| Name | Width | Description |
-|------|-------|-------------|
-| wire | 1 | – |
-| wire | 1 | – |
+| Signal | Width | Description |
+|--------|-------|-------------|
+| rd_data1 | 64 | Read port 1 data |
+| rd_data2 | 64 | Read port 2 data |
 
 ## Functionality
+The register file instantiates a 32-entry array of 64-bit registers. Register `x0` is hardwired to zero; writes to it are ignored, and reads always return 0. The read ports are combinational. To support write-before-read forwarding, a multiplexer checks if the write address matches the read address while `wr_en` is high. If so, it forwards `wr_data` directly to the output instead of reading the stale value from the memory array.
 
-*rv_regfile provides the hardware implementation for its designated function within the SoC.*
-
-## Hierarchical Block Diagram (Mermaid)
-
+## Hierarchical Block Diagram
 ```mermaid
-graph LR
-    classDef sub fill:#f9f,stroke:#333,stroke-width:1px;
-    File[Register File]:::sub --> rv_regfile
+graph TD
+    subgraph Inputs
+        clk["clk"]
+        rst_n["rst_n"]
+        wr_en["wr_en"]
+        wr_data["wr_data"]
+    end
+    subgraph RF["rv_regfile"]
+        MEM["32x64 Array"]
+        BYP1["Bypass Mux 1"]
+        BYP2["Bypass Mux 2"]
+    end
+    subgraph Outputs
+        rd_data1["rd_data1"]
+        rd_data2["rd_data2"]
+    end
+    clk --> MEM
+    rst_n --> MEM
+    wr_en --> MEM
+    wr_data --> MEM
+    MEM --> BYP1
+    wr_data --> BYP1
+    MEM --> BYP2
+    wr_data --> BYP2
+    BYP1 --> rd_data1
+    BYP2 --> rd_data2
 ```
 
-## Full Signal‑Level Diagram (Mermaid)
-
+## Signal-Level Diagram
 ```mermaid
 graph LR
-    classDef sig fill:#eef,stroke:#555,stroke-width:1px;
-    classDef port fill:#cfe,stroke:#333,stroke-width:1px;
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(output, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(output, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
+    subgraph Inputs
+        addr1["rd_addr1"]
+        addr2["rd_addr2"]
+        waddr["wr_addr"]
+        wdata["wr_data"]
+    end
+    subgraph RF["rv_regfile"]
+        mem["Register Storage"]
+        mux1["Read Mux 1"]
+        mux2["Read Mux 2"]
+    end
+    subgraph Outputs
+        data1["rd_data1"]
+        data2["rd_data2"]
+    end
+    waddr --> mem
+    wdata --> mem
+    addr1 --> mux1
+    addr2 --> mux2
+    mem --> mux1
+    mem --> mux2
+    wdata --> mux1
+    wdata --> mux2
+    mux1 --> data1
+    mux2 --> data2
 ```

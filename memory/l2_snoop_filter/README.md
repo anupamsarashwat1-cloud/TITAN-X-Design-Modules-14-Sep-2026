@@ -2,88 +2,106 @@
 
 ## Description
 
-The **l2_snoop_filter** module SPDX-License-Identifier: Apache-2.0
- SMVDU-TITAN-X SoC — L2 Snoop Filter (MESI Directory)
- Iteration 3: Tracks L1 D-Cache coherence state for 4 application cores.
- Coherence Protocol: MESI
-`timescale 1ns/1ps
-`include "params.vh"
+The L2 Snoop Filter implements a directory-based MESI coherence protocol for 4 application cores in the SMVDU-TITAN-X SoC. It tracks the L1 D-Cache coherence state and sharer core mask for each cached line to enforce strict inclusion. The module intercepts crossbar requests, performs directory lookups, and orchestrates snoop requests to specific L1 caches to maintain coherence. It uses an internal FSM to transition between lookup, snoop request, snoop acknowledgment, and directory update phases.
 
 ## Interface
 
 ### Inputs
 
-| Name | Width | Description |
-|------|-------|-------------|
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
+| Signal | Width | Description |
+|--------|-------|-------------|
+| clk    | 1     | System clock |
+| rst_n  | 1     | Active-low asynchronous reset |
+| req_valid | 1  | Request valid signal from Crossbar / L2 Controller |
+| req_addr | 40  | Target address of the coherence request |
+| req_type | 2   | Type of request (00=ReadShared, 01=ReadUnique, 10=CleanInvalidate, 11=MakeInvalid) |
+| req_core | 2   | ID of the requesting core (0-3) |
+| snoop_ack | NUM_CORES | Acknowledgment mask from snooped L1 caches |
+| snoop_data_valid | NUM_CORES | Indicates which snooped cores returned dirty data |
 
 ### Outputs
 
-| Name | Width | Description |
-|------|-------|-------------|
-| to | 1 | – |
-| reg | 1 | – |
-| reg | 1 | – |
-| reg | 1 | – |
-| reg | 1 | – |
-| reg | 1 | – |
-| reg | 1 | – |
-| reg | 1 | – |
+| Signal | Width | Description |
+|--------|-------|-------------|
+| snoop_valid | NUM_CORES | Snoop request valid mask targeting specific cores |
+| snoop_addr | 40 | Address sent to L1 caches for snooping |
+| snoop_type | 2 | Snoop operation type (00=GetS, 01=GetM, 10=Inv) |
+| resp_valid | 1 | Snoop filter response valid to L2 Controller |
+| resp_hit | 1 | Indicates if the requested line hit in the directory |
+| resp_dirty | 1 | Indicates if the requested line was dirty in another core |
+| resp_owner | 2 | Core ID holding the modified line |
 
 ## Functionality
 
-*l2_snoop_filter provides the hardware implementation for its designated function within the SoC.*
+The L2 Snoop Filter manages a 64-set × 32-way state array that tracks the MESI state and an owner/sharer mask for cached lines. On receiving a request, the FSM transitions from `IDLE` to `LOOKUP`, examining the directory tags for a hit. If a miss occurs, it flags the need for a memory fetch and allocates a new directory entry. On a hit, if the line is modified or exclusive in another core, it issues snoop requests (via `SNOOP_REQ` state) and waits for acknowledgments. After reconciling coherence, the FSM proceeds to `UPDATE` to modify the directory state and sharer mask based on the request type before returning to `IDLE`.
 
-## Hierarchical Block Diagram (Mermaid)
+## Hierarchical Block Diagram
 
 ```mermaid
-graph LR
-    classDef sub fill:#f9f,stroke:#333,stroke-width:1px;
-    Filter[Snoop Filter]:::sub --> l2_snoop_filter
-    array[associative array]:::sub --> l2_snoop_filter
-    if[else if]:::sub --> l2_snoop_filter
-    if[Inv if]:::sub --> l2_snoop_filter
-    if[state if]:::sub --> l2_snoop_filter
-    sharers[other sharers]:::sub --> l2_snoop_filter
-    if[else if]:::sub --> l2_snoop_filter
-    if[else if]:::sub --> l2_snoop_filter
-    if[else if]:::sub --> l2_snoop_filter
+graph TD
+    subgraph Inputs
+        clk["clk"]
+        rst_n["rst_n"]
+        req_in["req_valid, req_addr, req_type, req_core"]
+        snoop_in["snoop_ack, snoop_data_valid"]
+    end
+    subgraph MODULE["l2_snoop_filter"]
+        FSM["Coherence FSM"]
+        DIR["Directory Array (State, Mask, Tag)"]
+    end
+    subgraph Outputs
+        snoop_out["snoop_valid, snoop_addr, snoop_type"]
+        resp_out["resp_valid, resp_hit, resp_dirty, resp_owner"]
+    end
+    clk --> FSM
+    rst_n --> FSM
+    req_in --> FSM
+    FSM -->|"lookup / update"| DIR
+    DIR -->|"hit / state"| FSM
+    snoop_in --> FSM
+    FSM --> snoop_out
+    FSM --> resp_out
 ```
 
-## Full Signal‑Level Diagram (Mermaid)
+## Signal-Level Diagram
 
 ```mermaid
 graph LR
-    classDef sig fill:#eef,stroke:#555,stroke-width:1px;
-    classDef port fill:#cfe,stroke:#333,stroke-width:1px;
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    to["to\n(output, 1)"]:::port
-    reg["reg\n(output, 1)"]:::port
-    reg["reg\n(output, 1)"]:::port
-    reg["reg\n(output, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    reg["reg\n(output, 1)"]:::port
-    reg["reg\n(output, 1)"]:::port
-    reg["reg\n(output, 1)"]:::port
-    reg["reg\n(output, 1)"]:::port
-    state["state\n(reg, 3)"]:::sig
-    hit_mask["hit_mask\n(reg, 4)"]:::sig
-    hit_way["hit_way\n(reg, 5)"]:::sig
-    line_hit["line_hit\n(reg, 1)"]:::sig
-    line_state["line_state\n(reg, 2)"]:::sig
-    req_core_saved["req_core_saved\n(reg, 2)"]:::sig
-    req_type_saved["req_type_saved\n(reg, 2)"]:::sig
+    subgraph Inputs
+        clk["clk"]
+        rst_n["rst_n"]
+        req_valid["req_valid"]
+        req_addr["req_addr[39:0]"]
+        req_type["req_type[1:0]"]
+        req_core["req_core[1:0]"]
+        snoop_ack["snoop_ack[3:0]"]
+        snoop_data_valid["snoop_data_valid[3:0]"]
+    end
+    subgraph MODULE["l2_snoop_filter"]
+        CTRL["Control Logic & FSM"]
+    end
+    subgraph Outputs
+        snoop_valid["snoop_valid[3:0]"]
+        snoop_addr["snoop_addr[39:0]"]
+        snoop_type["snoop_type[1:0]"]
+        resp_valid["resp_valid"]
+        resp_hit["resp_hit"]
+        resp_dirty["resp_dirty"]
+        resp_owner["resp_owner[1:0]"]
+    end
+    clk --> CTRL
+    rst_n --> CTRL
+    req_valid --> CTRL
+    req_addr --> CTRL
+    req_type --> CTRL
+    req_core --> CTRL
+    snoop_ack --> CTRL
+    snoop_data_valid --> CTRL
+    CTRL --> snoop_valid
+    CTRL --> snoop_addr
+    CTRL --> snoop_type
+    CTRL --> resp_valid
+    CTRL --> resp_hit
+    CTRL --> resp_dirty
+    CTRL --> resp_owner
 ```

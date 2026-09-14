@@ -1,64 +1,78 @@
+
 # rv_writeback
 
 ## Description
-
-The **rv_writeback** module SPDX-License-Identifier: Apache-2.0
- SMVDU-TITAN-X SoC — RV64I Writeback Stage
-`timescale 1ns/1ps
+The `rv_writeback` module is the final stage of the pipeline. It simply registers the incoming result from the memory stage and drives the write port of the register file (located in the decode stage). It also provides a forwarding path back to the execute stage to resolve distance-2 data hazards.
 
 ## Interface
 
 ### Inputs
-
-| Name | Width | Description |
-|------|-------|-------------|
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
+| Signal | Width | Description |
+|--------|-------|-------------|
+| clk | 1 | System clock |
+| rst_n | 1 | Active-low asynchronous reset |
+| result | 64 | Result data from memory stage |
+| rd_in | 5 | Destination register address |
+| reg_write | 1 | Register write enable |
+| valid_in | 1 | Input valid signal |
 
 ### Outputs
-
-| Name | Width | Description |
-|------|-------|-------------|
-| reg | 1 | – |
-| reg | 1 | – |
-| reg | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
+| Signal | Width | Description |
+|--------|-------|-------------|
+| wb_data | 64 | Data to be written to the register file |
+| wb_rd | 5 | Destination register address for the register file |
+| wb_we | 1 | Write enable for the register file (forces 0 for x0) |
+| fwd_wb_data | 64 | Forwarded data for earlier pipeline stages |
+| fwd_wb_rd | 5 | Forwarded destination register |
+| fwd_wb_valid | 1 | Forwarding valid signal |
 
 ## Functionality
+This module captures the execution result and destination information into pipeline registers on the clock edge. It outputs these registered values as write signals to the integer register file. A check is included to disable writes to register `x0`. The same outputs are exposed combinationally as forwarding paths (`fwd_wb_*`) to provide the freshest data to dependent instructions in the execute stage before they are formally written to the register file.
 
-*rv_writeback provides the hardware implementation for its designated function within the SoC.*
-
-## Hierarchical Block Diagram (Mermaid)
-
+## Hierarchical Block Diagram
 ```mermaid
-graph LR
-    classDef sub fill:#f9f,stroke:#333,stroke-width:1px;
-    rv_writeback[module rv_writeback]:::sub --> rv_writeback
-    if[begin if]:::sub --> rv_writeback
+graph TD
+    subgraph Inputs
+        clk["clk"]
+        rst_n["rst_n"]
+        result["result"]
+    end
+    subgraph WB["rv_writeback"]
+        REG["Pipeline Register"]
+    end
+    subgraph Outputs
+        wb_data["wb_data"]
+        fwd_wb_data["fwd_wb_data"]
+    end
+    clk --> REG
+    rst_n --> REG
+    result --> REG
+    REG --> wb_data
+    REG --> fwd_wb_data
 ```
 
-## Full Signal‑Level Diagram (Mermaid)
-
+## Signal-Level Diagram
 ```mermaid
 graph LR
-    classDef sig fill:#eef,stroke:#555,stroke-width:1px;
-    classDef port fill:#cfe,stroke:#333,stroke-width:1px;
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    reg["reg\n(output, 1)"]:::port
-    reg["reg\n(output, 1)"]:::port
-    reg["reg\n(output, 1)"]:::port
-    wire["wire\n(output, 1)"]:::port
-    wire["wire\n(output, 1)"]:::port
-    wire["wire\n(output, 1)"]:::port
+    subgraph Inputs
+        result["result"]
+        rd["rd_in"]
+        we["reg_write"]
+        val["valid_in"]
+    end
+    subgraph WB["rv_writeback"]
+        reg["Flip-Flops"]
+    end
+    subgraph Outputs
+        wb_data["wb_data"]
+        wb_rd["wb_rd"]
+        wb_we["wb_we"]
+    end
+    result --> reg
+    rd --> reg
+    we --> reg
+    val --> reg
+    reg --> wb_data
+    reg --> wb_rd
+    reg --> wb_we
 ```

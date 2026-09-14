@@ -1,47 +1,53 @@
-# BUFX4
+# stdcell_stubs
 
 ## Description
 
-The **BUFX4** module Standard cell stub library for 180nm verification
- Canonical home of cell stubs. Guarded so it may be listed on any compile
- line regardless of ../common/* also being present.
-`ifndef TITANX_STDCELL_STUBS
-`define TITANX_STDCELL_STUBS
-
- BUFX4: 4X drive strength buffer
+`stdcell_stubs.v` is the canonical library of standard cell RTL stubs used for verification of the SMVDU-TITAN-X SoC targeting a 180nm process node. It provides behavioral simulation models for standard cells that are structurally instantiated within the design. Currently, it includes the stub for `BUFX4`, a 4x drive strength buffer used to resolve high fanout nets. The file is wrapped in an include guard (`TITANX_STDCELL_STUBS`) to prevent redefinition errors if the file is passed multiple times to the compiler or alongside isolated macro definitions.
 
 ## Interface
 
 ### Inputs
 
-| Name | Width | Description |
-|------|-------|-------------|
-| wire | 1 | – |
+| Signal | Width | Description |
+|--------|-------|-------------|
+| A | 1 | Logical input signal for the BUFX4 cell |
 
 ### Outputs
 
-| Name | Width | Description |
-|------|-------|-------------|
-| wire | 1 | – |
+| Signal | Width | Description |
+|--------|-------|-------------|
+| Y | 1 | Logical output signal for the BUFX4 cell |
 
 ## Functionality
 
-*BUFX4 provides the hardware implementation for its designated function within the SoC.*
+In behavioral simulation, standard cell stubs act as simple logical equivalents of their physical counterparts. The `BUFX4` cell is implemented as a continuous assignment from `A` to `Y`, simply passing the logical value through without any actual electrical delays. During synthesis, the synthesis tool substitutes this RTL stub with a physical timing-characterized layout cell from the 180nm standard cell library, allowing the tool to properly buffer signals and meet timing closures based on physical wireloads.
 
-## Hierarchical Block Diagram (Mermaid)
+## Hierarchical Block Diagram
 
 ```mermaid
-graph LR
-    classDef sub fill:#f9f,stroke:#333,stroke-width:1px;
-    BUFX4[module BUFX4]:::sub --> BUFX4
+graph TD
+    stdcell_stubs["stdcell_stubs Library"]
+    BUFX4["BUFX4 Cell Stub"]
+    
+    stdcell_stubs --> BUFX4
 ```
 
-## Full Signal‑Level Diagram (Mermaid)
+## Signal-Level Diagram
 
 ```mermaid
 graph LR
-    classDef sig fill:#eef,stroke:#555,stroke-width:1px;
-    classDef port fill:#cfe,stroke:#333,stroke-width:1px;
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(output, 1)"]:::port
+    subgraph Inputs
+        A["A"]
+    end
+    
+    subgraph MODULE["BUFX4"]
+        AssignNode["assign Y = A"]
+    end
+    
+    subgraph Outputs
+        Y["Y"]
+    end
+    
+    A --> AssignNode
+    AssignNode --> Y
 ```

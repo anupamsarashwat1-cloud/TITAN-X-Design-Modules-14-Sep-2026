@@ -2,174 +2,124 @@
 
 ## Description
 
-The **ddr_ctrl_top** module SPDX-License-Identifier: Apache-2.0
- SMVDU-TITAN-X SoC — DDR4 Memory Controller Top
- Iteration 3: Upgraded with Bank Interleaving, Auto-Refresh Manager, and DFI 4.0
- AXI4 slave → command sequencer → scheduler → PHY
-`timescale 1ns/1ps
+The DDR4 Memory Controller Top (`ddr_ctrl_top`) is the primary bridge between the internal AXI4 interconnect and the external DDR4 memory in the SMVDU-TITAN-X SoC. It encapsulates an initialization sequence, an auto-refresh manager, and address decoding logic to support bank interleaving. By parsing incoming AXI4 read and write requests, the controller extracts the bank group, bank, row, and column indices, and forwards them as structured commands to the underlying scheduler. It incorporates a robust watchdog mechanism to prevent the AXI bus from wedging; if the scheduler fails to return data or complete a command within a specified timeout, the controller safely degrades the transaction by returning a synthetic `SLVERR` response back to the master.
 
 ## Interface
 
 ### Inputs
 
-| Name | Width | Description |
-|------|-------|-------------|
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
+| Signal | Width | Description |
+|--------|-------|-------------|
+| clk | 1 | System clock |
+| rst_n | 1 | Active-low asynchronous reset |
+| s_awvalid | 1 | AXI write address valid |
+| s_awaddr | 40 | AXI write address |
+| s_awid | 4 | AXI write address ID |
+| s_awlen | 8 | AXI write burst length |
+| s_awsize | 3 | AXI write burst size |
+| s_wvalid | 1 | AXI write data valid |
+| s_wdata | 64 | AXI write data |
+| s_wstrb | 8 | AXI write byte strobes |
+| s_wlast | 1 | AXI write last beat flag |
+| s_bready | 1 | AXI write response ready |
+| s_arvalid | 1 | AXI read address valid |
+| s_araddr | 40 | AXI read address |
+| s_arid | 4 | AXI read address ID |
+| s_arlen | 8 | AXI read burst length |
+| s_rready | 1 | AXI read data ready |
 
 ### Outputs
 
-| Name | Width | Description |
-|------|-------|-------------|
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
+| Signal | Width | Description |
+|--------|-------|-------------|
+| s_awready | 1 | AXI write address ready |
+| s_wready | 1 | AXI write data ready |
+| s_bvalid | 1 | AXI write response valid |
+| s_bresp | 2 | AXI write response |
+| s_bid | 4 | AXI write response ID |
+| s_arready | 1 | AXI read address ready |
+| s_rvalid | 1 | AXI read data valid |
+| s_rdata | 64 | AXI read data |
+| s_rresp | 2 | AXI read response |
+| s_rlast | 1 | AXI read last beat flag |
+| s_rid | 4 | AXI read data ID |
+| ddr_ck_p | 1 | DDR clock (positive phase) |
+| ddr_ck_n | 1 | DDR clock (negative phase) |
+| ddr_cke | 1 | DDR clock enable |
+| ddr_cs_n | 1 | DDR chip select (active low) |
+| ddr_ras_n | 1 | DDR row address strobe (active low) |
+| ddr_cas_n | 1 | DDR column address strobe (active low) |
+| ddr_we_n | 1 | DDR write enable (active low) |
+| ddr_ba | 3 | DDR bank address |
+| ddr_bg | 2 | DDR bank group |
+| ddr_addr | 16 | DDR address bus (row and column) |
+| ddr_dm | 8 | DDR data mask |
+| ddr_dq | 64 | DDR bidirectional data bus (inout) |
+| ddr_dqs_p | 8 | DDR bidirectional data strobe positive (inout) |
+| ddr_dqs_n | 8 | DDR bidirectional data strobe negative (inout) |
 
 ## Functionality
 
-*ddr_ctrl_top provides the hardware implementation for its designated function within the SoC.*
+Upon reset, the controller undergoes a simulated 40,000-cycle initialization sequence before accepting any AXI transactions. During normal operation, an autonomous refresh manager periodically forces the scheduler to issue `REF` commands to satisfy DDR memory retention constraints. For AXI transactions, the controller uses a finite state machine (`CS_IDLE`, `CS_READ`, `CS_WRITE`, `CS_WRESP`) to decode the address into bank group (bits [16:15]), bank (bits [14:12]), row, and column components, achieving effective bank interleaving. These components are issued to the `ddr_scheduler` sub-module as DFI-like commands. The controller maintains a pending state for each transaction, and if a transaction is not serviced by the scheduler within 4096 cycles (measured by `wd_cnt`), it aborts the wait and synthesizes an AXI `SLVERR` response to prevent system deadlock.
 
-## Hierarchical Block Diagram (Mermaid)
+## Hierarchical Block Diagram
 
 ```mermaid
-graph LR
-    classDef sub fill:#f9f,stroke:#333,stroke-width:1px;
-    ddr_ctrl_top[module ddr_ctrl_top]:::sub --> ddr_ctrl_top
-    if[begin if]:::sub --> ddr_ctrl_top
-    if[begin if]:::sub --> ddr_ctrl_top
-    case[begin case]:::sub --> ddr_ctrl_top
-    mapping[interleaved mapping]:::sub --> ddr_ctrl_top
-    if[begin if]:::sub --> ddr_ctrl_top
-    yet[accepted yet]:::sub --> ddr_ctrl_top
-    u_phy[ddr_phy_if u_phy]:::sub --> ddr_ctrl_top
+graph TD
+    subgraph MODULE["ddr_ctrl_top"]
+        CTRL["AXI FSM & Address Decoder"]
+        REF["Refresh & Init Manager"]
+        SCHED["ddr_scheduler"]
+        PHY["ddr_phy_if"]
+    end
+    
+    CTRL --> SCHED
+    REF --> CTRL
+    SCHED --> PHY
 ```
 
-## Full Signal‑Level Diagram (Mermaid)
+## Signal-Level Diagram
 
 ```mermaid
 graph LR
-    classDef sig fill:#eef,stroke:#555,stroke-width:1px;
-    classDef port fill:#cfe,stroke:#333,stroke-width:1px;
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(output, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(output, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(output, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(output, 1)"]:::port
-    wire["wire\n(output, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(output, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(output, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(output, 1)"]:::port
-    wire["wire\n(output, 1)"]:::port
-    wire["wire\n(output, 1)"]:::port
-    wire["wire\n(output, 1)"]:::port
-    wire["wire\n(output, 1)"]:::port
-    wire["wire\n(output, 1)"]:::port
-    wire["wire\n(output, 1)"]:::port
-    wire["wire\n(output, 1)"]:::port
-    wire["wire\n(output, 1)"]:::port
-    wire["wire\n(output, 1)"]:::port
-    wire["wire\n(output, 1)"]:::port
-    wire["wire\n(output, 1)"]:::port
-    wire["wire\n(output, 1)"]:::port
-    wire["wire\n(output, 1)"]:::port
-    wire["wire\n(output, 1)"]:::port
-    wire["wire\n(inout, 1)"]:::port
-    wire["wire\n(inout, 1)"]:::port
-    wire["wire\n(inout, 1)"]:::port
-    init_cnt["init_cnt\n(reg, 16)"]:::sig
-    init_done["init_done\n(reg, 1)"]:::sig
-    ref_cnt["ref_cnt\n(reg, 16)"]:::sig
-    ref_req["ref_req\n(reg, 1)"]:::sig
-    ref_ack["ref_ack\n(wire, 1)"]:::sig
-    cmd_addr["cmd_addr\n(reg, 40)"]:::sig
-    cmd_wdata["cmd_wdata\n(reg, 64)"]:::sig
-    cmd_wstrb["cmd_wstrb\n(reg, 8)"]:::sig
-    cmd_id["cmd_id\n(reg, 4)"]:::sig
-    cmd_is_wr["cmd_is_wr\n(reg, 1)"]:::sig
-    ctrl_state["ctrl_state\n(reg, 2)"]:::sig
-    s_arready_r["s_arready_r\n(reg, 1)"]:::sig
-    s_awready_r["s_awready_r\n(reg, 1)"]:::sig
-    s_wready_r["s_wready_r\n(reg, 1)"]:::sig
-    s_bvalid_r["s_bvalid_r\n(reg, 1)"]:::sig
-    s_rvalid_r["s_rvalid_r\n(reg, 1)"]:::sig
-    s_rlast_r["s_rlast_r\n(reg, 1)"]:::sig
-    s_rdata_r["s_rdata_r\n(reg, 64)"]:::sig
-    s_rid_r["s_rid_r\n(reg, 4)"]:::sig
-    s_bid_r["s_bid_r\n(reg, 4)"]:::sig
-    s_rresp_r["s_rresp_r\n(reg, 2)"]:::sig
-    s_bresp_r["s_bresp_r\n(reg, 2)"]:::sig
-    sched_ready["sched_ready\n(wire, 1)"]:::sig
-    sched_cmd_done["sched_cmd_done\n(wire, 1)"]:::sig
-    sched_rddata["sched_rddata\n(wire, 64)"]:::sig
-    sched_rdvalid["sched_rdvalid\n(wire, 1)"]:::sig
-    cmd_pend["cmd_pend\n(reg, 1)"]:::sig
-    sched_cmd_type["sched_cmd_type\n(reg, 2)"]:::sig
-    sched_bank["sched_bank\n(reg, 3)"]:::sig
-    sched_bg["sched_bg\n(reg, 2)"]:::sig
-    sched_row["sched_row\n(reg, 16)"]:::sig
-    sched_col["sched_col\n(reg, 10)"]:::sig
-    sched_wrdata["sched_wrdata\n(reg, 64)"]:::sig
-    wd_cnt["wd_cnt\n(reg, 16)"]:::sig
-    dfi_cs_n_w["dfi_cs_n_w\n(wire, 1)"]:::sig
-    dfi_ras_n_w["dfi_ras_n_w\n(wire, 1)"]:::sig
-    dfi_cas_n_w["dfi_cas_n_w\n(wire, 1)"]:::sig
-    dfi_we_n_w["dfi_we_n_w\n(wire, 1)"]:::sig
-    dfi_act_n_w["dfi_act_n_w\n(wire, 1)"]:::sig
-    dfi_bank_w["dfi_bank_w\n(wire, 3)"]:::sig
-    dfi_bg_w["dfi_bg_w\n(wire, 2)"]:::sig
-    dfi_addr_w["dfi_addr_w\n(wire, 16)"]:::sig
-    dfi_wrdata_valid_w["dfi_wrdata_valid_w\n(wire, 1)"]:::sig
-    dfi_wrdata_w["dfi_wrdata_w\n(wire, 64)"]:::sig
-    dfi_rddata_w["dfi_rddata_w\n(wire, 64)"]:::sig
-    dfi_rddata_valid_w["dfi_rddata_valid_w\n(wire, 1)"]:::sig
+    subgraph AXI4_Interface
+        clk["clk"]
+        rst_n["rst_n"]
+        aw["s_awvalid, s_awaddr, s_awid"]
+        w["s_wvalid, s_wdata, s_wstrb, s_wlast"]
+        b_ready["s_bready"]
+        ar["s_arvalid, s_araddr, s_arid"]
+        r_ready["s_rready"]
+    end
+    
+    subgraph ddr_ctrl_top
+        TOP["Controller Core + Sub-modules"]
+    end
+    
+    subgraph External_DDR4_Pins
+        ck["ddr_ck_p, ddr_ck_n, ddr_cke"]
+        cmd["ddr_cs_n, ddr_ras_n, ddr_cas_n, ddr_we_n"]
+        addr["ddr_ba, ddr_bg, ddr_addr"]
+        dq_dqs["ddr_dm, ddr_dq, ddr_dqs_p, ddr_dqs_n"]
+    end
+    
+    clk --> TOP
+    rst_n --> TOP
+    
+    aw --> TOP
+    w --> TOP
+    b_ready --> TOP
+    ar --> TOP
+    r_ready --> TOP
+    
+    TOP --> ck
+    TOP --> cmd
+    TOP --> addr
+    TOP --> dq_dqs
+    
+    TOP --> aw_ready["s_awready"]
+    TOP --> w_ready["s_wready"]
+    TOP --> b["s_bvalid, s_bresp, s_bid"]
+    TOP --> ar_ready["s_arready"]
+    TOP --> r["s_rvalid, s_rdata, s_rresp, s_rlast, s_rid"]
 ```

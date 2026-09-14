@@ -2,170 +2,118 @@
 
 ## Description
 
-The **rv_monitor_core** module SPDX-License-Identifier: Apache-2.0
- SMVDU-TITAN-X SoC — RV64IMAC Monitor Core
- Iteration 3: SiFive E51 equivalent
- Target: SCL 180nm, 125-200 MHz
- Features: 64-bit, IMAC extensions (no FPU), Bare/M-mode (no MMU), simple PMP.
- 5-stage pipeline with tightly-integrated memory / direct AXI interface.
-`timescale 1ns/1ps
-`include "params.vh"
-`include "isa_pkg.vh"
+The `rv_monitor_core` is a lightweight RV64IMAC (RISC-V 64-bit Integer, Multiply/Divide, Atomic, Compressed) Monitor Core within the SMVDU-TITAN-X SoC. Designed similarly to the SiFive E51, it functions as a highly privileged management processor, operating exclusively in Machine mode (M-mode) without an MMU. The core employs a simple 5-stage pipeline (Fetch, Decode, Execute) and interfaces directly with the system memory interconnect via distinct AXI4 master ports for instruction fetch and data access. With integrated debug support and hardware interrupt lines, it is tailored for robust bootloading, system monitoring, and hardware management tasks.
 
 ## Interface
 
 ### Inputs
 
-| Name | Width | Description |
-|------|-------|-------------|
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
+| Signal | Width | Description |
+|--------|-------|-------------|
+| clk | 1 | System clock |
+| rst_n | 1 | Active-low asynchronous reset |
+| irq_m_ext | 1 | Machine external interrupt |
+| irq_m_timer | 1 | Machine timer interrupt |
+| irq_m_soft | 1 | Machine software interrupt |
+| imem_arready | 1 | AXI4 instruction read address ready |
+| imem_rdata | 64 | AXI4 instruction read data (32-bit instruction extracted) |
+| imem_rvalid | 1 | AXI4 instruction read valid |
+| imem_rresp | 2 | AXI4 instruction read response |
+| dmem_awready | 1 | AXI4 data write address ready |
+| dmem_wready | 1 | AXI4 data write data ready |
+| dmem_bvalid | 1 | AXI4 data write response valid |
+| dmem_bresp | 2 | AXI4 data write response |
+| dmem_arready | 1 | AXI4 data read address ready |
+| dmem_rvalid | 1 | AXI4 data read valid |
+| dmem_rdata | 64 | AXI4 data read data |
+| dmem_rlast | 1 | AXI4 data read last beat indicator |
+| dmem_rresp | 2 | AXI4 data read response |
+| halt_req | 1 | Debug halt request to suspend the core |
+| resume_req | 1 | Debug resume request to un-halt the core |
 
 ### Outputs
 
-| Name | Width | Description |
-|------|-------|-------------|
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
+| Signal | Width | Description |
+|--------|-------|-------------|
+| imem_araddr | 40 | AXI4 instruction read address (Program Counter) |
+| imem_arvalid | 1 | AXI4 instruction read address valid |
+| dmem_awvalid | 1 | AXI4 data write address valid |
+| dmem_awaddr | 40 | AXI4 data write address |
+| dmem_awlen | 8 | AXI4 data write burst length (0 for single beat) |
+| dmem_awsize | 3 | AXI4 data write transfer size |
+| dmem_awburst | 2 | AXI4 data write burst type |
+| dmem_wvalid | 1 | AXI4 data write valid |
+| dmem_wdata | 64 | AXI4 data write data |
+| dmem_wstrb | 8 | AXI4 data write byte enables |
+| dmem_wlast | 1 | AXI4 data write last beat indicator |
+| dmem_bready | 1 | AXI4 data write response ready |
+| dmem_arvalid | 1 | AXI4 data read address valid |
+| dmem_araddr | 40 | AXI4 data read address |
+| dmem_arlen | 8 | AXI4 data read burst length (0 for single beat) |
+| dmem_arsize | 3 | AXI4 data read transfer size |
+| dmem_arburst | 2 | AXI4 data read burst type |
+| dmem_rready | 1 | AXI4 data read ready |
+| hart_halted | 1 | Indicates the hart is currently halted for debug |
+| hart_running | 1 | Indicates the hart is actively executing |
 
 ## Functionality
 
-*rv_monitor_core provides the hardware implementation for its designated function within the SoC.*
+The `rv_monitor_core` utilizes a streamlined 5-stage pipeline. The Fetch stage issues instruction requests via the `imem` AXI4-Lite interface. Upon receiving a valid instruction, the `rv_decode` sub-module determines the operation type, source registers, and necessary control signals. The `rv_execute` sub-module performs ALUs operations, branch evaluations, and generates memory access requests. Since the monitor core lacks a data cache, all load and store operations are driven directly to the `dmem` AXI4 interface as single-beat transactions. The pipeline stalls if a structural hazard occurs (like a multi-cycle multiplication/division) or if memory transactions are not immediately accepted. The core exclusively runs in Machine mode, responding instantly to external, timer, and software interrupts, and supporting JTAG/Debug halts.
 
-## Hierarchical Block Diagram (Mermaid)
+## Hierarchical Block Diagram
 
 ```mermaid
-graph LR
-    classDef sub fill:#f9f,stroke:#333,stroke-width:1px;
-    extensions[IMAC extensions]:::sub --> rv_monitor_core
-    if[begin if]:::sub --> rv_monitor_core
-    u_execute[rv_execute u_execute]:::sub --> rv_monitor_core
-    Access[Memory Access]:::sub --> rv_monitor_core
+graph TD
+    subgraph "rv_monitor_core"
+        FETCH["Instruction Fetch Logic"]
+        DECODE["rv_decode (Decoder)"]
+        EXECUTE["rv_execute (ALU, Branch, LSU)"]
+        PC["Program Counter Reg"]
+    end
+    
+    PC --> FETCH
+    FETCH --> DECODE
+    DECODE --> EXECUTE
+    EXECUTE -->|"Branch Target"| PC
 ```
 
-## Full Signal‑Level Diagram (Mermaid)
+## Signal-Level Diagram
 
 ```mermaid
 graph LR
-    classDef sig fill:#eef,stroke:#555,stroke-width:1px;
-    classDef port fill:#cfe,stroke:#333,stroke-width:1px;
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(output, 1)"]:::port
-    wire["wire\n(output, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(output, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(output, 1)"]:::port
-    wire["wire\n(output, 1)"]:::port
-    wire["wire\n(output, 1)"]:::port
-    wire["wire\n(output, 1)"]:::port
-    wire["wire\n(output, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(output, 1)"]:::port
-    wire["wire\n(output, 1)"]:::port
-    wire["wire\n(output, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(output, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(output, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(output, 1)"]:::port
-    wire["wire\n(output, 1)"]:::port
-    wire["wire\n(output, 1)"]:::port
-    wire["wire\n(output, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(output, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(output, 1)"]:::port
-    wire["wire\n(output, 1)"]:::port
-    stall["stall\n(wire, 1)"]:::sig
-    flush_fe["flush_fe\n(wire, 1)"]:::sig
-    flush_de["flush_de\n(wire, 1)"]:::sig
-    branch_target["branch_target\n(wire, 64)"]:::sig
-    branch_taken["branch_taken\n(wire, 1)"]:::sig
-    fe_pc["fe_pc\n(wire, 64)"]:::sig
-    fe_instr["fe_instr\n(wire, 32)"]:::sig
-    fe_valid["fe_valid\n(wire, 1)"]:::sig
-    pc_reg["pc_reg\n(reg, 64)"]:::sig
-    de_pc["de_pc\n(wire, 64)"]:::sig
-    de_rs1["de_rs1\n(wire, 64)"]:::sig
-    de_rs2["de_rs2\n(wire, 64)"]:::sig
-    de_imm["de_imm\n(wire, 64)"]:::sig
-    de_rd["de_rd\n(wire, 5)"]:::sig
-    de_rs1a["de_rs1a\n(wire, 5)"]:::sig
-    de_rs2a["de_rs2a\n(wire, 5)"]:::sig
-    de_f3["de_f3\n(wire, 3)"]:::sig
-    de_f7["de_f7\n(wire, 7)"]:::sig
-    de_op["de_op\n(wire, 7)"]:::sig
-    de_aluop["de_aluop\n(wire, 5)"]:::sig
-    de_amo_f5["de_amo_f5\n(wire, 5)"]:::sig
-    de_memr["de_memr\n(wire, 1)"]:::sig
-    de_memw["de_memw\n(wire, 1)"]:::sig
-    de_regw["de_regw\n(wire, 1)"]:::sig
-    de_branch["de_branch\n(wire, 1)"]:::sig
-    de_jal["de_jal\n(wire, 1)"]:::sig
-    de_jalr["de_jalr\n(wire, 1)"]:::sig
-    de_is_amo["de_is_amo\n(wire, 1)"]:::sig
-    de_valid["de_valid\n(wire, 1)"]:::sig
-    ex_alures["ex_alures\n(wire, 64)"]:::sig
-    ex_rs2["ex_rs2\n(wire, 64)"]:::sig
-    ex_lr_addr["ex_lr_addr\n(wire, 64)"]:::sig
-    ex_rd["ex_rd\n(wire, 5)"]:::sig
-    ex_amo_f5["ex_amo_f5\n(wire, 5)"]:::sig
-    ex_f3["ex_f3\n(wire, 3)"]:::sig
-    ex_op["ex_op\n(wire, 7)"]:::sig
-    ex_memr["ex_memr\n(wire, 1)"]:::sig
-    ex_memw["ex_memw\n(wire, 1)"]:::sig
-    ex_regw["ex_regw\n(wire, 1)"]:::sig
-    ex_is_amo["ex_is_amo\n(wire, 1)"]:::sig
-    ex_valid["ex_valid\n(wire, 1)"]:::sig
-    ex_lr_valid["ex_lr_valid\n(wire, 1)"]:::sig
-    mul_div_stall["mul_div_stall\n(wire, 1)"]:::sig
+    subgraph Inputs
+        clk["clk"]
+        irq["irqs (ext, timer, soft)"]
+        axi_i_r["imem_rdata, imem_rvalid"]
+        axi_d_r["dmem_rdata, dmem_rvalid, dmem_bvalid"]
+        dbg["halt_req, resume_req"]
+    end
+    
+    subgraph Core_Module["rv_monitor_core"]
+        FE["Fetch Stage"]
+        ID["Decode Stage"]
+        EX["Execute Stage"]
+    end
+    
+    subgraph Outputs
+        axi_i_ar["imem_araddr, imem_arvalid"]
+        axi_d_aw["dmem_awaddr, dmem_awvalid"]
+        axi_d_w["dmem_wdata, dmem_wvalid"]
+        axi_d_ar["dmem_araddr, dmem_arvalid"]
+        hart_status["hart_halted, hart_running"]
+    end
+
+    clk --> Core_Module
+    axi_i_r --> FE
+    FE --> ID
+    ID --> EX
+    EX --> axi_d_aw
+    EX --> axi_d_w
+    EX --> axi_d_ar
+    axi_d_r --> EX
+    
+    FE --> axi_i_ar
+    dbg --> Core_Module
+    Core_Module --> hart_status
+    irq --> Core_Module
 ```

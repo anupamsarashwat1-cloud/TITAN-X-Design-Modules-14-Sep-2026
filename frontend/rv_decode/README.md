@@ -2,134 +2,132 @@
 
 ## Description
 
-The **rv_decode** module SPDX-License-Identifier: Apache-2.0
- SMVDU-TITAN-X SoC — RV64I Decode + Register File Stage
-`timescale 1ns/1ps
- Shared ISA constants — single source of truth shared with execute/top.
- (isa_constants.vh was a drifted 4-bit localparam duplicate; retired.)
- Included at file scope, matching every other consumer of this header.
-`include "isa_pkg.vh"
+`rv_decode` is the instruction decode and register file stage for the SMVDU-TITAN-X RISC-V (RV64I) SoC. It is responsible for taking fetched 32-bit instructions and decoding them into microarchitectural control signals, immediate values, and register addresses. The module instantiates the `rv_regfile` sub-module to read source register operands and supports internal forwarding from the writeback stage to resolve data hazards. Additionally, it features high-fanout buffering for the `flush` signal using `BUFX4` macros and includes full decode support for the M-extension (multiply/divide) as well as system instructions (CSR operations, `ecall`, `ebreak`, `mret`). 
 
 ## Interface
 
 ### Inputs
 
-| Name | Width | Description |
-|------|-------|-------------|
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
+| Signal | Width | Description |
+|--------|-------|-------------|
+| clk | 1 | System clock |
+| rst_n | 1 | Active-low asynchronous reset |
+| stall | 1 | Pipeline stall signal to freeze the decode stage |
+| flush | 1 | Pipeline flush signal to clear the decode stage |
+| pc_in | 64 | Program counter value from the fetch stage |
+| instr_in | 32 | Fetched instruction from the fetch stage |
+| valid_in | 1 | Valid flag indicating valid input from the fetch stage |
+| wb_rd | 5 | Destination register address from the writeback stage |
+| wb_data | 64 | Data from the writeback stage to be written to the register file |
+| wb_we | 1 | Write enable signal from the writeback stage |
 
 ### Outputs
 
-| Name | Width | Description |
-|------|-------|-------------|
-| reg | 1 | – |
-| reg | 1 | – |
-| reg | 1 | – |
-| reg | 1 | – |
-| reg | 1 | – |
-| reg | 1 | – |
-| reg | 1 | – |
-| reg | 1 | – |
-| reg | 1 | – |
-| reg | 1 | – |
-| reg | 1 | – |
-| reg | 1 | – |
-| reg | 1 | – |
-| reg | 1 | – |
-| reg | 1 | – |
-| reg | 1 | – |
-| reg | 1 | – |
-| reg | 1 | – |
-| reg | 1 | – |
-| reg | 1 | – |
-| reg | 1 | – |
-| reg | 1 | – |
-| reg | 1 | – |
+| Signal | Width | Description |
+|--------|-------|-------------|
+| pc_out | 64 | Program counter value passed to the execute stage |
+| rs1_data | 64 | Source register 1 data passed to the execute stage |
+| rs2_data | 64 | Source register 2 data passed to the execute stage |
+| imm | 64 | Sign-extended immediate value passed to the execute stage |
+| rd | 5 | Destination register address passed to the execute stage |
+| rs1_addr | 5 | Source register 1 address |
+| rs2_addr | 5 | Source register 2 address |
+| funct3 | 3 | Instruction funct3 field passed to the execute stage |
+| funct7 | 7 | Instruction funct7 field passed to the execute stage |
+| opcode | 7 | Instruction opcode field passed to the execute stage |
+| alu_op | 5 | Decoded ALU operation code |
+| mem_read | 1 | Control signal indicating a memory read operation |
+| mem_write | 1 | Control signal indicating a memory write operation |
+| reg_write | 1 | Control signal indicating a register file write operation |
+| branch | 1 | Control signal indicating a conditional branch instruction |
+| jal | 1 | Control signal indicating a JAL instruction |
+| jalr | 1 | Control signal indicating a JALR instruction |
+| is_csr | 1 | Control signal indicating a CSR instruction |
+| csr_op | 2 | Decoded CSR operation type |
+| is_ecall | 1 | Control signal indicating an ECALL instruction |
+| is_ebreak | 1 | Control signal indicating an EBREAK instruction |
+| is_mret | 1 | Control signal indicating an MRET instruction |
+| valid_out | 1 | Valid flag indicating valid instruction delivery to execute |
 
 ## Functionality
 
-*rv_decode provides the hardware implementation for its designated function within the SoC.*
+The module combinationally extracts instruction fields (`opcode`, `funct3`, `funct7`, `rs1`, `rs2`, `rd`) and decodes them to generate control signals (e.g., `alu_op`, `mem_read`, `reg_write`, `is_csr`). It supports various instruction formats, sign-extending immediates accurately for RV64I (including correctly zero-padding upper bits for specific instructions). The `rv_regfile` sub-module is instantiated to handle register reads, while writeback bypassing ensures that if the writeback stage writes to a register currently being read, the new data is immediately forwarded. Control signals and operand data are then latched into pipeline registers. The `flush` input is buffered via `BUFX4` macros to meet timing constraints across the wide pipeline register.
 
-## Hierarchical Block Diagram (Mermaid)
+## Hierarchical Block Diagram
 
 ```mermaid
-graph LR
-    classDef sub fill:#f9f,stroke:#333,stroke-width:1px;
-    rv_decode[module rv_decode]:::sub --> rv_decode
-    decode[Immediate decode]:::sub --> rv_decode
-    u_buf1[BUFX4 u_buf1]:::sub --> rv_decode
-    u_buf2[BUFX4 u_buf2]:::sub --> rv_decode
-    u_buf3[BUFX4 u_buf3]:::sub --> rv_decode
-    u_buf4[BUFX4 u_buf4]:::sub --> rv_decode
-    u_buf5[BUFX4 u_buf5]:::sub --> rv_decode
+graph TD
+    rv_decode["rv_decode Module"]
+    RegFile["rv_regfile"]
+    BUFX4_1["BUFX4 (u_buf1-5)"]
+    DecodeLogic["Combinational Decode Logic"]
+    PipelineRegs["Pipeline Registers"]
+    
+    rv_decode --> RegFile
+    rv_decode --> BUFX4_1
+    rv_decode --> DecodeLogic
+    rv_decode --> PipelineRegs
+    
+    DecodeLogic --> PipelineRegs
+    RegFile --> PipelineRegs
+    BUFX4_1 --> PipelineRegs
 ```
 
-## Full Signal‑Level Diagram (Mermaid)
+## Signal-Level Diagram
 
 ```mermaid
 graph LR
-    classDef sig fill:#eef,stroke:#555,stroke-width:1px;
-    classDef port fill:#cfe,stroke:#333,stroke-width:1px;
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    reg["reg\n(output, 1)"]:::port
-    reg["reg\n(output, 1)"]:::port
-    reg["reg\n(output, 1)"]:::port
-    reg["reg\n(output, 1)"]:::port
-    reg["reg\n(output, 1)"]:::port
-    reg["reg\n(output, 1)"]:::port
-    reg["reg\n(output, 1)"]:::port
-    reg["reg\n(output, 1)"]:::port
-    reg["reg\n(output, 1)"]:::port
-    reg["reg\n(output, 1)"]:::port
-    reg["reg\n(output, 1)"]:::port
-    reg["reg\n(output, 1)"]:::port
-    reg["reg\n(output, 1)"]:::port
-    reg["reg\n(output, 1)"]:::port
-    reg["reg\n(output, 1)"]:::port
-    reg["reg\n(output, 1)"]:::port
-    reg["reg\n(output, 1)"]:::port
-    reg["reg\n(output, 1)"]:::port
-    reg["reg\n(output, 1)"]:::port
-    reg["reg\n(output, 1)"]:::port
-    reg["reg\n(output, 1)"]:::port
-    reg["reg\n(output, 1)"]:::port
-    reg["reg\n(output, 1)"]:::port
-    imm_comb["imm_comb\n(reg, 64)"]:::sig
-    alu_op_comb["alu_op_comb\n(reg, 5)"]:::sig
-    mem_r_comb["mem_r_comb\n(reg, 1)"]:::sig
-    mem_w_comb["mem_w_comb\n(reg, 1)"]:::sig
-    reg_w_comb["reg_w_comb\n(reg, 1)"]:::sig
-    br_comb["br_comb\n(reg, 1)"]:::sig
-    jal_comb["jal_comb\n(reg, 1)"]:::sig
-    jalr_comb["jalr_comb\n(reg, 1)"]:::sig
-    csr_comb["csr_comb\n(reg, 1)"]:::sig
-    ec_comb["ec_comb\n(reg, 1)"]:::sig
-    eb_comb["eb_comb\n(reg, 1)"]:::sig
-    mret_comb["mret_comb\n(reg, 1)"]:::sig
-    csrop_comb["csrop_comb\n(reg, 2)"]:::sig
-    rf_rs1_data["rf_rs1_data\n(wire, 64)"]:::sig
-    rf_rs2_data["rf_rs2_data\n(wire, 64)"]:::sig
-    flush_buf1["flush_buf1\n(wire, 1)"]:::sig
-    flush_buf2["flush_buf2\n(wire, 1)"]:::sig
-    flush_buf3["flush_buf3\n(wire, 1)"]:::sig
-    flush_buf4["flush_buf4\n(wire, 1)"]:::sig
-    flush_buf5["flush_buf5\n(wire, 1)"]:::sig
+    subgraph Inputs
+        clk["clk"]
+        rst_n["rst_n"]
+        stall["stall"]
+        flush["flush"]
+        pc_in["pc_in[63:0]"]
+        instr_in["instr_in[31:0]"]
+        valid_in["valid_in"]
+        wb_rd["wb_rd[4:0]"]
+        wb_data["wb_data[63:0]"]
+        wb_we["wb_we"]
+    end
+    
+    subgraph MODULE["rv_decode"]
+        Decode["Decode Combinational Logic"]
+        RF["rv_regfile"]
+        Regs["Pipeline Registers"]
+    end
+    
+    subgraph Outputs
+        pc_out["pc_out[63:0]"]
+        rs1_data["rs1_data[63:0]"]
+        rs2_data["rs2_data[63:0]"]
+        imm["imm[63:0]"]
+        rd["rd[4:0]"]
+        alu_op["alu_op[4:0]"]
+        branch["branch"]
+        valid_out["valid_out"]
+    end
+    
+    clk --> Regs
+    rst_n --> Regs
+    stall --> Regs
+    flush --> Regs
+    pc_in --> Regs
+    instr_in --> Decode
+    instr_in --> RF
+    wb_rd --> RF
+    wb_data --> RF
+    wb_we --> RF
+    
+    Decode --> Regs
+    RF --> Regs
+    valid_in --> Regs
+    
+    Regs --> pc_out
+    Regs --> rs1_data
+    Regs --> rs2_data
+    Regs --> imm
+    Regs --> rd
+    Regs --> alu_op
+    Regs --> branch
+    Regs --> valid_out
 ```

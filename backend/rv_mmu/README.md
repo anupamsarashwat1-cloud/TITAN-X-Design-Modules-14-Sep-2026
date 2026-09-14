@@ -2,113 +2,113 @@
 
 ## Description
 
-The **rv_mmu** module SPDX-License-Identifier: Apache-2.0
- SMVDU-TITAN-X SoC — Sv39 Memory Management Unit (Top-level)
- Iteration 3: Integrates TLB + PTW, manages SATP CSR, mode switching
- Instantiated once for I-side and once for D-side per core
-`timescale 1ns/1ps
-`include "params.vh"
-`include "isa_pkg.vh"
+The `rv_mmu` module is the top-level Memory Management Unit for the SMVDU-TITAN-X SoC, implementing the RISC-V Sv39 virtual memory architecture. It dynamically routes translation requests based on the core's current privilege mode and the `satp` CSR configuration, seamlessly falling back to bare mode (pass-through) when paging is disabled or during M-mode execution. Internally, it instantiates and orchestrates the `rv_tlb` (Translation Lookaside Buffer) for fast caching and the `rv_ptw` (Page Table Walker) to service TLB misses via memory fetches. The MMU manages the pipeline interface, stalling the core during page table walks, handling `SFENCE.VMA` invalidations, and accurately reporting precise page faults.
 
 ## Interface
 
 ### Inputs
 
-| Name | Width | Description |
-|------|-------|-------------|
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
+| Signal | Width | Description |
+|--------|-------|-------------|
+| clk | 1 | System clock |
+| rst_n | 1 | Active-low asynchronous reset |
+| satp | 64 | Supervisor Address Translation and Protection CSR (mode, ASID, PPN) |
+| priv_mode | 2 | Current CPU privilege mode (00=User, 01=Supervisor, 11=Machine) |
+| va_req | 64 | Virtual address requested by the CPU pipeline |
+| req_valid | 1 | High when a valid translation request is made |
+| req_r | 1 | High if the requested access is a read (load) |
+| req_w | 1 | High if the requested access is a write (store) |
+| req_x | 1 | High if the requested access is an instruction fetch |
+| ptw_arready | 1 | AXI4 read address ready from interconnect |
+| ptw_rvalid | 1 | AXI4 read data valid from interconnect |
+| ptw_rdata | 64 | AXI4 read data (Page Table Entry) |
+| ptw_rresp | 2 | AXI4 read response |
+| sfence_vma | 1 | Triggers a global TLB flush |
+| sfence_asid_en | 1 | Triggers an ASID-specific TLB flush |
+| sfence_va_en | 1 | Triggers a VA-specific TLB flush |
+| sfence_va_val | 64 | Virtual address for targeted TLB flush |
+| sfence_asid_val | 64 | ASID for targeted TLB flush |
 
 ### Outputs
 
-| Name | Width | Description |
-|------|-------|-------------|
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| output | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
+| Signal | Width | Description |
+|--------|-------|-------------|
+| pa_out | 40 | Translated physical address output |
+| trans_valid | 1 | High when the translation completes (hit or after PTW fill) |
+| trans_busy | 1 | High when the MMU is servicing a TLB miss, stalling the pipeline |
+| page_fault | 1 | High when an access violation or invalid PTE is detected |
+| fault_va | 64 | The faulting virtual address for the `stval` CSR |
+| ptw_arvalid | 1 | AXI4 read address valid from the PTW |
+| ptw_araddr | 40 | AXI4 read address from the PTW |
+| ptw_rready | 1 | AXI4 read data ready from the PTW |
 
 ## Functionality
 
-*rv_mmu provides the hardware implementation for its designated function within the SoC.*
+Upon receiving a valid translation request (`req_valid`), `rv_mmu` determines the active translation scheme. If the core is in M-mode or `satp.mode` is set to bare (0), it instantly passes the `va_req` through to `pa_out` and asserts `trans_valid`. If Sv39 mode is active, the request is routed to the integrated `rv_tlb`. On a TLB hit, the translated physical address and permissions are evaluated combinationally; if permissions fail, `page_fault` is asserted immediately. On a TLB miss, the MMU asserts `trans_busy` to stall the pipeline and awakens the `rv_ptw` module. The PTW performs sequential AXI4 memory reads to traverse the page tables. Upon finding a valid leaf PTE, it pushes a fill request back to the TLB and terminates the walk. The MMU also forwards `SFENCE.VMA` control signals directly to the TLB to maintain translation coherence.
 
-## Hierarchical Block Diagram (Mermaid)
+## Hierarchical Block Diagram
 
 ```mermaid
-graph LR
-    classDef sub fill:#f9f,stroke:#333,stroke-width:1px;
-    Unit[Management Unit]:::sub --> rv_mmu
-    mode[bare mode]:::sub --> rv_mmu
-    Instance[PTW Instance]:::sub --> rv_mmu
-    completes[PTW completes]:::sub --> rv_mmu
+graph TD
+    subgraph "rv_mmu"
+        CTRL["Mode Control (SATP & Privilege)"]
+        MUX["Output Mux (Bare vs Translated)"]
+        
+        subgraph "Sv39 Subsystem"
+            TLB["rv_tlb (Translation Lookaside Buffer)"]
+            PTW["rv_ptw (Page Table Walker)"]
+        end
+    end
+    
+    CTRL -->|"Translation Req"| TLB
+    CTRL -->|"Bypass Req"| MUX
+    TLB -->|"Miss Trigger"| PTW
+    PTW -->|"PTE Fill"| TLB
+    TLB -->|"Translated PA"| MUX
 ```
 
-## Full Signal‑Level Diagram (Mermaid)
+## Signal-Level Diagram
 
 ```mermaid
 graph LR
-    classDef sig fill:#eef,stroke:#555,stroke-width:1px;
-    classDef port fill:#cfe,stroke:#333,stroke-width:1px;
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(output, 1)"]:::port
-    wire["wire\n(output, 1)"]:::port
-    wire["wire\n(output, 1)"]:::port
-    output["output\n(output, 1)"]:::port
-    wire["wire\n(output, 1)"]:::port
-    wire["wire\n(output, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(output, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(output, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    tlb_pa["tlb_pa\n(wire, 38)"]:::sig
-    tlb_hit["tlb_hit\n(wire, 1)"]:::sig
-    tlb_perm_r["tlb_perm_r\n(wire, 1)"]:::sig
-    tlb_perm_w["tlb_perm_w\n(wire, 1)"]:::sig
-    tlb_perm_x["tlb_perm_x\n(wire, 1)"]:::sig
-    tlb_perm_u["tlb_perm_u\n(wire, 1)"]:::sig
-    tlb_page_fault["tlb_page_fault\n(wire, 1)"]:::sig
-    ptw_fill_valid["ptw_fill_valid\n(wire, 1)"]:::sig
-    ptw_fill_va["ptw_fill_va\n(wire, 39)"]:::sig
-    ptw_fill_pa["ptw_fill_pa\n(wire, 38)"]:::sig
-    ptw_fill_asid["ptw_fill_asid\n(wire, 16)"]:::sig
-    ptw_fill_perm["ptw_fill_perm\n(wire, 8)"]:::sig
-    ptw_fill_level["ptw_fill_level\n(wire, 2)"]:::sig
-    ptw_busy["ptw_busy\n(wire, 1)"]:::sig
-    ptw_page_fault["ptw_page_fault\n(wire, 1)"]:::sig
-    ptw_fault_addr["ptw_fault_addr\n(wire, 64)"]:::sig
+    subgraph Inputs
+        clk["clk"]
+        satp["satp[63:0]"]
+        priv_mode["priv_mode[1:0]"]
+        va_req["va_req[63:0]"]
+        req_valid["req_valid"]
+        axi_r["ptw_rdata, ptw_rvalid"]
+    end
+    
+    subgraph MMU_Module["rv_mmu"]
+        TLB_INST["rv_tlb"]
+        PTW_INST["rv_ptw"]
+        MUX_LOGIC["Address Mux"]
+    end
+    
+    subgraph Outputs
+        pa_out["pa_out[39:0]"]
+        trans_busy["trans_busy"]
+        page_fault["page_fault"]
+        axi_ar["ptw_araddr, ptw_arvalid"]
+    end
+
+    clk --> MMU_Module
+    satp --> TLB_INST
+    satp --> PTW_INST
+    priv_mode --> TLB_INST
+    priv_mode --> PTW_INST
+    va_req --> TLB_INST
+    va_req --> MUX_LOGIC
+    req_valid --> TLB_INST
+    
+    TLB_INST -->|Miss| PTW_INST
+    PTW_INST -->|Fill| TLB_INST
+    PTW_INST --> axi_ar
+    axi_r --> PTW_INST
+    
+    TLB_INST -->|PA Hit| MUX_LOGIC
+    MUX_LOGIC --> pa_out
+    PTW_INST --> trans_busy
+    TLB_INST --> page_fault
 ```

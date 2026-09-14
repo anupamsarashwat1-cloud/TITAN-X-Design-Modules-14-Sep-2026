@@ -1,137 +1,113 @@
+
 # rv_debug
 
 ## Description
-
-The **rv_debug** module SPDX-License-Identifier: Apache-2.0
- SMVDU-TITAN-X SoC — JTAG Debug Module (RISC-V Debug Spec 0.13)
- Iteration 3: 4-pin TAP, DMI registers, Abstract Commands, Program Buffer
- Supports: halt/resume, register access, memory access, 4 hardware triggers
-`timescale 1ns/1ps
-`include "params.vh"
+The `rv_debug` module implements a RISC-V Debug Module based on the debug spec 0.13. It includes an IEEE 1149.1 compliant JTAG TAP controller, a Debug Module Interface (DMI), and abstract command support for halting, resuming, and accessing registers/memory. It acts as an AXI4 system bus master to read and write memory directly.
 
 ## Interface
 
 ### Inputs
-
-| Name | Width | Description |
-|------|-------|-------------|
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
+| Signal | Width | Description |
+|--------|-------|-------------|
+| clk | 1 | System clock |
+| rst_n | 1 | Active-low asynchronous reset |
+| tck | 1 | JTAG Test Clock |
+| tms | 1 | JTAG Test Mode Select |
+| tdi | 1 | JTAG Test Data In |
+| hart_halted | N | Status flags indicating which harts are halted |
+| hart_running | N | Status flags indicating which harts are running |
+| hart_unavail | N | Status flags indicating which harts are unavailable |
+| reg_rdata | 64 | Data read from the core register file |
+| cmd_done | 1 | Abstract command complete |
+| cmd_err | 1 | Abstract command error |
+| sb_arready | 1 | System bus read address ready |
+| sb_rvalid | 1 | System bus read data valid |
+| sb_rdata | 64 | System bus read data |
+| sb_rresp | 2 | System bus read response |
+| sb_awready | 1 | System bus write address ready |
+| sb_wready | 1 | System bus write data ready |
+| sb_bvalid | 1 | System bus write response valid |
 
 ### Outputs
-
-| Name | Width | Description |
-|------|-------|-------------|
-| reg | 1 | – |
-| reg | 1 | – |
-| reg | 1 | – |
-| reg | 1 | – |
-| reg | 1 | – |
-| reg | 1 | – |
-| reg | 1 | – |
-| reg | 1 | – |
-| reg | 1 | – |
-| reg | 1 | – |
-| reg | 1 | – |
-| reg | 1 | – |
-| reg | 1 | – |
-| reg | 1 | – |
-| reg | 1 | – |
-| reg | 1 | – |
-| reg | 1 | – |
+| Signal | Width | Description |
+|--------|-------|-------------|
+| tdo | 1 | JTAG Test Data Out |
+| halt_req | N | Request signals to halt harts |
+| resume_req | N | Request signals to resume harts |
+| reg_sel | 5 | Register select for abstract command |
+| reg_wr | 1 | Write enable for abstract command |
+| reg_wdata | 64 | Write data for abstract command |
+| cmd_exec | 1 | Execute pulse for abstract command |
+| sb_arvalid | 1 | System bus read address valid |
+| sb_araddr | 40 | System bus read address |
+| sb_rready | 1 | System bus read data ready |
+| sb_awvalid | 1 | System bus write address valid |
+| sb_awaddr | 40 | System bus write address |
+| sb_wvalid | 1 | System bus write data valid |
+| sb_wdata | 64 | System bus write data |
+| sb_wstrb | 8 | System bus write strobes |
+| sb_wlast | 1 | System bus write last beat |
+| sb_bready | 1 | System bus write response ready |
 
 ## Functionality
+This module runs a canonical 16-state JTAG TAP FSM clocked by `tck`. The TAP interacts with the DMI shift register to form reads and writes. A clock-domain crossing synchronizes DMI requests into the core's `clk` domain, where a handler services them. Through DMI, external debuggers can write the `DMCONTROL` register to halt/resume the core, trigger abstract commands to view/edit registers, or use the system bus AXI master port to bypass the core and interact directly with system memory.
 
-*rv_debug provides the hardware implementation for its designated function within the SoC.*
-
-## Hierarchical Block Diagram (Mermaid)
-
+## Hierarchical Block Diagram
 ```mermaid
-graph LR
-    classDef sub fill:#f9f,stroke:#333,stroke-width:1px;
-    Module[Debug Module]:::sub --> rv_debug
+graph TD
+    subgraph Inputs
+        tck["tck"]
+        tms["tms"]
+        tdi["tdi"]
+        clk["clk"]
+    end
+    subgraph Debug["rv_debug"]
+        TAP["JTAG TAP FSM"]
+        CDC["Clock Domain Crossing"]
+        DMI["DMI Register Handler"]
+        SBM["System Bus Master"]
+    end
+    subgraph Outputs
+        tdo["tdo"]
+        halt_req["halt_req"]
+        sb_awvalid["sb_awvalid"]
+    end
+    tck --> TAP
+    tms --> TAP
+    tdi --> TAP
+    TAP --> CDC
+    clk --> DMI
+    CDC --> DMI
+    DMI --> SBM
+    TAP --> tdo
+    DMI --> halt_req
+    SBM --> sb_awvalid
 ```
 
-## Full Signal‑Level Diagram (Mermaid)
-
+## Signal-Level Diagram
 ```mermaid
 graph LR
-    classDef sig fill:#eef,stroke:#555,stroke-width:1px;
-    classDef port fill:#cfe,stroke:#333,stroke-width:1px;
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    reg["reg\n(output, 1)"]:::port
-    reg["reg\n(output, 1)"]:::port
-    reg["reg\n(output, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    reg["reg\n(output, 1)"]:::port
-    reg["reg\n(output, 1)"]:::port
-    reg["reg\n(output, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    reg["reg\n(output, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    reg["reg\n(output, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    reg["reg\n(output, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    reg["reg\n(output, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    reg["reg\n(output, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    reg["reg\n(output, 1)"]:::port
-    reg["reg\n(output, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    reg["reg\n(output, 1)"]:::port
-    reg["reg\n(output, 1)"]:::port
-    reg["reg\n(output, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    reg["reg\n(output, 1)"]:::port
-    tap_state["tap_state\n(reg, 4)"]:::sig
-    ir["ir\n(reg, 5)"]:::sig
-    dr_shift["dr_shift\n(reg, 41)"]:::sig
-    dr_capture["dr_capture\n(reg, 41)"]:::sig
-    dr_read_val["dr_read_val\n(reg, 41)"]:::sig
-    dmi_req["dmi_req\n(reg, 1)"]:::sig
-    dmi_req_addr["dmi_req_addr\n(reg, 7)"]:::sig
-    dmi_req_data["dmi_req_data\n(reg, 32)"]:::sig
-    dmi_req_op["dmi_req_op\n(reg, 2)"]:::sig
-    dmi_resp_data["dmi_resp_data\n(reg, 32)"]:::sig
-    dmi_resp_status["dmi_resp_status\n(reg, 2)"]:::sig
-    dmactive["dmactive\n(reg, 1)"]:::sig
-    ndmreset["ndmreset\n(reg, 1)"]:::sig
-    hartsel["hartsel\n(reg, 20)"]:::sig
-    haltreq_r["haltreq_r\n(reg, 1)"]:::sig
-    resumereq_r["resumereq_r\n(reg, 1)"]:::sig
-    cmderr["cmderr\n(reg, 3)"]:::sig
-    busy["busy\n(reg, 1)"]:::sig
-    data0["data0\n(reg, 32)"]:::sig
-    data1["data1\n(reg, 32)"]:::sig
-    sbversion["sbversion\n(reg, 3)"]:::sig
-    sbaccess["sbaccess\n(reg, 3)"]:::sig
-    sbaddress["sbaddress\n(reg, 40)"]:::sig
-    dmi_sync0["dmi_sync0\n(reg, 41)"]:::sig
-    dmi_sync1["dmi_sync1\n(reg, 41)"]:::sig
+    subgraph Inputs
+        tms["tms"]
+        tdi["tdi"]
+        hart_status["hart_halted, running"]
+    end
+    subgraph DBG["rv_debug"]
+        tap["TAP Controller"]
+        dmi_fsm["DMI FSM"]
+        axi_master["AXI Master"]
+    end
+    subgraph Outputs
+        tdo["tdo"]
+        halt["halt_req"]
+        axi_out["sb_awvalid, sb_arvalid"]
+    end
+    tms --> tap
+    tdi --> tap
+    tap --> dmi_fsm
+    hart_status --> dmi_fsm
+    dmi_fsm --> axi_master
+    tap --> tdo
+    dmi_fsm --> halt
+    axi_master --> axi_out
 ```

@@ -1,42 +1,53 @@
-# BUFX4
+# BUFX4 / buf_macros
 
 ## Description
 
-The **BUFX4** module Guarded duplicate of includes/stdcell_stubs.v — safe to compile together.
-`ifndef TITANX_STDCELL_STUBS
+`buf_macros.v` defines a simple structural buffer macro (`BUFX4`) for the SMVDU-TITAN-X SoC. It is typically used for driving high-fanout nets (such as resets, flushes, or clocks) across large pipeline registers to meet strict physical synthesis and timing closure constraints. In RTL simulation, this module acts merely as a transparent continuous assignment passing the input `A` to the output `Y`. It is guarded by an `ifndef TITANX_STDCELL_STUBS` directive to prevent conflicts during synthesis or simulation if the standard cell library stubs are already included in the compilation unit.
 
 ## Interface
 
 ### Inputs
 
-| Name | Width | Description |
-|------|-------|-------------|
-| wire | 1 | – |
+| Signal | Width | Description |
+|--------|-------|-------------|
+| A | 1 | Logical input signal to be buffered |
 
 ### Outputs
 
-| Name | Width | Description |
-|------|-------|-------------|
-| wire | 1 | – |
+| Signal | Width | Description |
+|--------|-------|-------------|
+| Y | 1 | Buffered logical output signal |
 
 ## Functionality
 
-*BUFX4 provides the hardware implementation for its designated function within the SoC.*
+The module implements a single continuous assignment (`assign Y = A;`). During physical implementation, the synthesis tool maps this structural instantiation directly to an actual high-drive standard cell buffer (e.g., a BUFX4 cell from a typical 180nm standard cell library). The explicit instantiation in the RTL helps the designer manually replicate logic to relieve high fanout constraints (like the flush signal tree in a wide pipeline decode register).
 
-## Hierarchical Block Diagram (Mermaid)
+## Hierarchical Block Diagram
 
 ```mermaid
-graph LR
-    classDef sub fill:#f9f,stroke:#333,stroke-width:1px;
-    BUFX4[module BUFX4]:::sub --> BUFX4
+graph TD
+    BUFX4["BUFX4 Macro"]
+    Assign["Assign Logic (Y = A)"]
+    
+    BUFX4 --> Assign
 ```
 
-## Full Signal‑Level Diagram (Mermaid)
+## Signal-Level Diagram
 
 ```mermaid
 graph LR
-    classDef sig fill:#eef,stroke:#555,stroke-width:1px;
-    classDef port fill:#cfe,stroke:#333,stroke-width:1px;
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(output, 1)"]:::port
+    subgraph Inputs
+        A["A"]
+    end
+    
+    subgraph MODULE["BUFX4"]
+        BufNode["Buffer"]
+    end
+    
+    subgraph Outputs
+        Y["Y"]
+    end
+    
+    A --> BufNode
+    BufNode -->|"Assign"| Y
 ```

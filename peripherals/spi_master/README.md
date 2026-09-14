@@ -2,81 +2,93 @@
 
 ## Description
 
-The **spi_master** module SPDX-License-Identifier: Apache-2.0
- SMVDU-TITAN-X SoC — SPI Master Controller
-`timescale 1ns/1ps
+The `spi_master` module is an APB-slave peripheral designed for the SMVDU-TITAN-X SoC, functioning as a standard SPI master controller. It supports full-duplex communication and provides up to four active-low chip selects to interface with multiple SPI slave devices. The architecture features a configurable clock divider for setting the SPI baud rate, and programmable clock polarity (CPOL) and phase (CPHA) to accommodate various SPI modes. The controller interfaces with the host CPU via an APB bus for register configuration and data transfers, and asserts an interrupt pulse upon the completion of a byte transmission.
 
 ## Interface
 
 ### Inputs
 
-| Name | Width | Description |
-|------|-------|-------------|
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
+| Signal | Width | Description |
+|--------|-------|-------------|
+| clk    | 1     | System clock |
+| rst_n  | 1     | Active-low asynchronous reset |
+| psel   | 1     | APB select signal, indicates the slave is selected |
+| penable| 1     | APB enable signal, indicates the second cycle of an APB transfer |
+| pwrite | 1     | APB write enable signal |
+| paddr  | 4     | APB address bus for register selection |
+| pwdata | 32    | APB write data bus |
+| spi_miso | 1   | SPI Master In Slave Out (MISO) data line |
 
 ### Outputs
 
-| Name | Width | Description |
-|------|-------|-------------|
-| reg | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| reg | 1 | – |
-| wire | 1 | – |
+| Signal | Width | Description |
+|--------|-------|-------------|
+| prdata | 32    | APB read data bus |
+| pready | 1     | APB ready signal, hardwired to 1 (zero wait states) |
+| spi_clk| 1     | SPI serial clock output |
+| spi_mosi | 1   | SPI Master Out Slave In (MOSI) data line |
+| spi_csn| 4     | Active-low SPI chip select lines for up to 4 slaves |
+| irq    | 1     | Interrupt request signal, pulses high when a transfer completes |
 
 ## Functionality
 
-*spi_master provides the hardware implementation for its designated function within the SoC.*
+The controller acts as an APB slave, allowing the host to write transmission data and configuration parameters such as the clock divider, CPOL, CPHA, and the active chip select. When a write to the data register occurs, the `start` signal is asserted, initiating a SPI transfer. A clock generation block creates the SPI clock based on the `clk_div` register. The core logic consists of a shift register and a state machine that handles the serialization of the output data onto `spi_mosi` and the deserialization of the input data from `spi_miso`. Depending on the SCLK edge (governed by internal phase tracking), data is shifted out and sampled in. When the 8-bit transfer finishes, the chip select is deasserted, the received byte is stored in the receive data register, the `busy` flag is cleared, and an `irq` pulse is generated.
 
-## Hierarchical Block Diagram (Mermaid)
+## Hierarchical Block Diagram
 
 ```mermaid
-graph LR
-    classDef sub fill:#f9f,stroke:#333,stroke-width:1px;
-    spi_master[module spi_master]:::sub --> spi_master
-    if[begin if]:::sub --> spi_master
+graph TD
+    subgraph spi_master
+        APB["APB Register Interface"]
+        CLKGEN["Clock Generator"]
+        SHIFT["Shift Register & Control logic"]
+    end
+    APB --> CLKGEN
+    APB --> SHIFT
+    CLKGEN --> SHIFT
 ```
 
-## Full Signal‑Level Diagram (Mermaid)
+## Signal-Level Diagram
 
 ```mermaid
 graph LR
-    classDef sig fill:#eef,stroke:#555,stroke-width:1px;
-    classDef port fill:#cfe,stroke:#333,stroke-width:1px;
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    reg["reg\n(output, 1)"]:::port
-    wire["wire\n(output, 1)"]:::port
-    wire["wire\n(output, 1)"]:::port
-    wire["wire\n(output, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    reg["reg\n(output, 1)"]:::port
-    wire["wire\n(output, 1)"]:::port
-    clk_div["clk_div\n(reg, 16)"]:::sig
-    tx_data["tx_data\n(reg, 8)"]:::sig
-    rx_data["rx_data\n(reg, 8)"]:::sig
-    start["start\n(reg, 1)"]:::sig
-    busy["busy\n(reg, 1)"]:::sig
-    cs_select["cs_select\n(reg, 4)"]:::sig
-    cpol["cpol\n(reg, 1)"]:::sig
-    cpha["cpha\n(reg, 1)"]:::sig
-    clk_cnt["clk_cnt\n(reg, 16)"]:::sig
-    sclk_r["sclk_r\n(reg, 1)"]:::sig
-    shift_out["shift_out\n(reg, 8)"]:::sig
-    shift_in["shift_in\n(reg, 8)"]:::sig
-    bit_cnt["bit_cnt\n(reg, 3)"]:::sig
-    mosi_r["mosi_r\n(reg, 1)"]:::sig
+    subgraph Inputs
+        clk["clk"]
+        rst_n["rst_n"]
+        psel["psel"]
+        penable["penable"]
+        pwrite["pwrite"]
+        paddr["paddr[3:0]"]
+        pwdata["pwdata[31:0]"]
+        spi_miso["spi_miso"]
+    end
+
+    subgraph spi_master
+        CTRL["Internal Logic"]
+    end
+
+    subgraph Outputs
+        prdata["prdata[31:0]"]
+        pready["pready"]
+        spi_clk["spi_clk"]
+        spi_mosi["spi_mosi"]
+        spi_csn["spi_csn[3:0]"]
+        irq["irq"]
+    end
+
+    clk --> CTRL
+    rst_n --> CTRL
+    psel --> CTRL
+    penable --> CTRL
+    pwrite --> CTRL
+    paddr --> CTRL
+    pwdata --> CTRL
+    spi_miso --> CTRL
+
+    CTRL --> prdata
+    CTRL --> pready
+    CTRL --> spi_clk
+    CTRL --> spi_mosi
+    CTRL --> spi_csn
+    CTRL --> irq
 ```

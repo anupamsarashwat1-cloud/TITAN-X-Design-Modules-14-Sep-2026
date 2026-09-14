@@ -2,80 +2,98 @@
 
 ## Description
 
-The **trng** module SPDX-License-Identifier: Apache-2.0
- SMVDU-TITAN-X SoC — True Random Number Generator (TRNG)
- Iteration 3: Based on Free-running Ring Oscillators (FIRO/GARO) with NIST SP 800-90B health tests.
-`timescale 1ns/1ps
+The True Random Number Generator (`trng`) is a critical security peripheral for the SMVDU-TITAN-X SoC, designed to produce cryptographically secure random bits. It leverages an array of free-running Ring Oscillators (ROs) as its physical entropy source (modeled behaviorally in this RTL). To counteract hardware bias and environmental correlation, the raw oscillator output is post-processed through a digital Von Neumann extractor. The module implements continuous health testing, specifically a Repetition Count Test compliant with NIST SP 800-90B, to monitor the quality of the entropy stream and alert the system of failures. The extracted entropy is packed into a 256-bit register and delivered to downstream consumer blocks (such as a DRBG) via a dedicated hardware handshake interface.
 
 ## Interface
 
 ### Inputs
 
-| Name | Width | Description |
-|------|-------|-------------|
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
+| Signal | Width | Description |
+|--------|-------|-------------|
+| clk    | 1     | System clock |
+| rst_n  | 1     | Active-low asynchronous reset |
+| paddr  | 32    | APB address bus |
+| psel   | 1     | APB select signal |
+| penable| 1     | APB enable signal |
+| pwrite | 1     | APB write enable signal |
+| pwdata | 32    | APB write data bus |
+| trng_ready | 1 | Ready signal from a downstream entropy consumer (e.g., DRBG) |
 
 ### Outputs
 
-| Name | Width | Description |
-|------|-------|-------------|
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
+| Signal | Width | Description |
+|--------|-------|-------------|
+| prdata | 32    | APB read data bus |
+| pready | 1     | APB ready signal, hardwired to 1 |
+| pslverr| 1     | APB slave error signal, hardwired to 0 |
+| trng_entropy | 256 | Accumulated 256-bit true random number |
+| trng_valid | 1 | Indicates that a full 256-bit entropy value is available |
+| trng_irq | 1   | Interrupt request, asserted if the entropy health test fails |
 
 ## Functionality
 
-*trng provides the hardware implementation for its designated function within the SoC.*
+The TRNG's core entropy source consists of 16 simulated Ring Oscillators that toggle independently based on random delays (represented here using randomized shift registers). The XORed bitstream from these oscillators forms a raw entropy sequence. A Von Neumann extractor processes this raw stream by examining bits in pairs: `01` yields a `0`, `10` yields a `1`, and pairs of `00` or `11` are discarded to eliminate bias. The debiased bitstream feeds into a continuous Repetition Count health test; if a single bit value is repeated 256 times sequentially, `health_fail` is asserted and triggers an interrupt (`trng_irq`), halting entropy collection. Valid bits are shifted into a 256-bit accumulator. Once 256 valid bits are collected, `trng_valid` is raised. The downstream logic can consume the data by asserting `trng_ready`, resetting the accumulator for the next batch. Software can monitor the TRNG status through the APB interface.
 
-## Hierarchical Block Diagram (Mermaid)
+## Hierarchical Block Diagram
 
 ```mermaid
-graph LR
-    classDef sub fill:#f9f,stroke:#333,stroke-width:1px;
-    Generator[Number Generator]:::sub --> trng
-    Oscillators[Ring Oscillators]:::sub --> trng
+graph TD
+    subgraph trng
+        RO["Ring Oscillator Array (Entropy Source)"]
+        VNEXT["Von Neumann Extractor"]
+        HEALTH["NIST SP 800-90B Health Tests"]
+        ACCUM["256-bit Entropy Accumulator"]
+        APB["APB Status Interface"]
+    end
+    RO --> VNEXT
+    VNEXT --> HEALTH
+    VNEXT --> ACCUM
+    HEALTH -.->|Fail Flag| ACCUM
+    HEALTH --> APB
+    ACCUM --> APB
 ```
 
-## Full Signal‑Level Diagram (Mermaid)
+## Signal-Level Diagram
 
 ```mermaid
 graph LR
-    classDef sig fill:#eef,stroke:#555,stroke-width:1px;
-    classDef port fill:#cfe,stroke:#333,stroke-width:1px;
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(output, 1)"]:::port
-    wire["wire\n(output, 1)"]:::port
-    wire["wire\n(output, 1)"]:::port
-    wire["wire\n(output, 1)"]:::port
-    wire["wire\n(output, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(output, 1)"]:::port
-    ro_out["ro_out\n(reg, 16)"]:::sig
-    vn_state["vn_state\n(reg, 1)"]:::sig
-    vn_prev_bit["vn_prev_bit\n(reg, 1)"]:::sig
-    vn_out_bit["vn_out_bit\n(reg, 1)"]:::sig
-    vn_out_valid["vn_out_valid\n(reg, 1)"]:::sig
-    rep_count["rep_count\n(reg, 8)"]:::sig
-    rep_prev["rep_prev\n(reg, 1)"]:::sig
-    health_fail["health_fail\n(reg, 1)"]:::sig
-    entropy_reg["entropy_reg\n(reg, 256)"]:::sig
-    entropy_cnt["entropy_cnt\n(reg, 9)"]:::sig
-    entropy_valid["entropy_valid\n(reg, 1)"]:::sig
-    ctrl_reg["ctrl_reg\n(reg, 32)"]:::sig
+    subgraph Inputs
+        clk["clk"]
+        rst_n["rst_n"]
+        paddr["paddr[31:0]"]
+        psel["psel"]
+        penable["penable"]
+        pwrite["pwrite"]
+        pwdata["pwdata[31:0]"]
+        trng_ready["trng_ready"]
+    end
+
+    subgraph trng
+        LOGIC["Entropy Pipeline & Logic"]
+    end
+
+    subgraph Outputs
+        prdata["prdata[31:0]"]
+        pready["pready"]
+        pslverr["pslverr"]
+        trng_entropy["trng_entropy[255:0]"]
+        trng_valid["trng_valid"]
+        trng_irq["trng_irq"]
+    end
+
+    clk --> LOGIC
+    rst_n --> LOGIC
+    paddr --> LOGIC
+    psel --> LOGIC
+    penable --> LOGIC
+    pwrite --> LOGIC
+    pwdata --> LOGIC
+    trng_ready --> LOGIC
+
+    LOGIC --> prdata
+    LOGIC --> pready
+    LOGIC --> pslverr
+    LOGIC --> trng_entropy
+    LOGIC --> trng_valid
+    LOGIC --> trng_irq
 ```

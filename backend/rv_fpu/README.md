@@ -1,138 +1,96 @@
+
 # rv_fpu
 
 ## Description
-
-The **rv_fpu** module SPDX-License-Identifier: Apache-2.0
- SMVDU-TITAN-X SoC — IEEE 754-2008 Floating Point Unit (F + D extensions)
- Iteration 3: RV64GC FPU — 4-stage pipeline, shared SP/DP datapath
- Target: SCL 180nm, 125-200 MHz
- Supports: FADD/FSUB/FMUL/FDIV/FSQRT/FMA, FCVT, FMIN/FMAX, FCMP, FMV
- Rounding modes: RNE, RTZ, RDN, RUP, RMM, DYN
-`timescale 1ns/1ps
-`include "params.vh"
-`include "isa_pkg.vh"
+The `rv_fpu` module is a fully pipelined, IEEE 754-2008 compliant Floating Point Unit supporting both Single Precision (SP) and Double Precision (DP) formats (F and D extensions). It features a 4-stage pipeline that shares a datapath for both precisions, performing operations like FADD, FSUB, FMUL, FDIV, FCVT, FCMP, and FMIN/FMAX.
 
 ## Interface
 
 ### Inputs
-
-| Name | Width | Description |
-|------|-------|-------------|
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
-| wire | 1 | – |
+| Signal | Width | Description |
+|--------|-------|-------------|
+| clk | 1 | System clock |
+| rst_n | 1 | Active-low asynchronous reset |
+| fop | 5 | Floating point operation code |
+| fmt | 2 | Precision format (00=SP, 01=DP) |
+| rm | 3 | Rounding mode |
+| valid_in | 1 | Input valid signal |
+| fp_src1 | 64 | Floating point source register 1 |
+| fp_src2 | 64 | Floating point source register 2 |
+| fp_src3 | 64 | Floating point source register 3 (for FMA) |
+| int_src | 64 | Integer source for FCVT operations |
+| frm_csr | 3 | Dynamic rounding mode from CSR |
 
 ### Outputs
-
-| Name | Width | Description |
-|------|-------|-------------|
-| reg | 1 | – |
-| reg | 1 | – |
-| reg | 1 | – |
-| reg | 1 | – |
-| reg | 1 | – |
-| reg | 1 | – |
+| Signal | Width | Description |
+|--------|-------|-------------|
+| fp_result | 64 | Floating point result |
+| result_valid | 1 | Floating point result valid |
+| fflags | 5 | IEEE exception flags (NV, DZ, OF, UF, NX) |
+| fpu_done | 1 | FPU operation complete |
+| int_result | 64 | Integer result for FCMP or FCVT |
+| int_result_valid | 1 | Integer result valid |
 
 ## Functionality
+The module is divided into four pipeline stages. Stage 1 unpacks operands, handles special cases (NaN, Inf, Denormals), and aligns exponents. Stage 2 performs mantissa addition, subtraction, or multiplication using a wide shared adder/multiplier. Stage 3 counts leading zeros and normalizes the mantissa. Stage 4 applies the selected rounding mode (RNE, RTZ, RDN, RUP, RMM), packs the sign, exponent, and mantissa, and handles integer/floating-point conversions.
 
-*rv_fpu provides the hardware implementation for its designated function within the SoC.*
-
-## Hierarchical Block Diagram (Mermaid)
-
+## Hierarchical Block Diagram
 ```mermaid
-graph LR
-    classDef sub fill:#f9f,stroke:#333,stroke-width:1px;
-    Unit[Point Unit]:::sub --> rv_fpu
-    mode[rounding mode]:::sub --> rv_fpu
-    detection[value detection]:::sub --> rv_fpu
-    patterns[NaN patterns]:::sub --> rv_fpu
-    if[begin if]:::sub --> rv_fpu
-    operand[smaller operand]:::sub --> rv_fpu
-    product[bit product]:::sub --> rv_fpu
-    if[begin if]:::sub --> rv_fpu
+graph TD
+    subgraph Inputs
+        clk["clk"]
+        fop["fop"]
+        fp_src1["fp_src1"]
+    end
+    subgraph FPU["rv_fpu"]
+        S1["Stage 1: Unpack & Align"]
+        S2["Stage 2: Mantissa ALU"]
+        S3["Stage 3: Normalize"]
+        S4["Stage 4: Pack & Round"]
+        S1 --> S2
+        S2 --> S3
+        S3 --> S4
+    end
+    subgraph Outputs
+        fp_result["fp_result"]
+        fflags["fflags"]
+    end
+    clk --> S1
+    clk --> S2
+    clk --> S3
+    clk --> S4
+    fop --> S1
+    fp_src1 --> S1
+    S4 --> fp_result
+    S4 --> fflags
 ```
 
-## Full Signal‑Level Diagram (Mermaid)
-
+## Signal-Level Diagram
 ```mermaid
 graph LR
-    classDef sig fill:#eef,stroke:#555,stroke-width:1px;
-    classDef port fill:#cfe,stroke:#333,stroke-width:1px;
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    wire["wire\n(input, 1)"]:::port
-    reg["reg\n(output, 1)"]:::port
-    reg["reg\n(output, 1)"]:::port
-    reg["reg\n(output, 1)"]:::port
-    reg["reg\n(output, 1)"]:::port
-    reg["reg\n(output, 1)"]:::port
-    reg["reg\n(output, 1)"]:::port
-    s1_valid["s1_valid\n(reg, 1)"]:::sig
-    s1_fop["s1_fop\n(reg, 5)"]:::sig
-    s1_fmt["s1_fmt\n(reg, 2)"]:::sig
-    s1_rm["s1_rm\n(reg, 3)"]:::sig
-    s1_sgn_a["s1_sgn_a\n(reg, 1)"]:::sig
-    s1_sgn_b["s1_sgn_b\n(reg, 1)"]:::sig
-    s1_sgn_c["s1_sgn_c\n(reg, 1)"]:::sig
-    s1_exp_a["s1_exp_a\n(reg, 8)"]:::sig
-    s1_exp_b["s1_exp_b\n(reg, 8)"]:::sig
-    s1_sig_a["s1_sig_a\n(reg, 25)"]:::sig
-    s1_sig_b["s1_sig_b\n(reg, 25)"]:::sig
-    s1_dp_sgn_a["s1_dp_sgn_a\n(reg, 1)"]:::sig
-    s1_dp_sgn_b["s1_dp_sgn_b\n(reg, 1)"]:::sig
-    s1_dp_exp_a["s1_dp_exp_a\n(reg, 11)"]:::sig
-    s1_dp_exp_b["s1_dp_exp_b\n(reg, 11)"]:::sig
-    s1_dp_sig_a["s1_dp_sig_a\n(reg, 54)"]:::sig
-    s1_dp_sig_b["s1_dp_sig_b\n(reg, 54)"]:::sig
-    s1_exp_diff["s1_exp_diff\n(reg, 8)"]:::sig
-    s1_dp_exp_diff["s1_dp_exp_diff\n(reg, 11)"]:::sig
-    s1_int_src["s1_int_src\n(reg, 64)"]:::sig
-    s2_valid["s2_valid\n(reg, 1)"]:::sig
-    s2_fop["s2_fop\n(reg, 5)"]:::sig
-    s2_fmt["s2_fmt\n(reg, 2)"]:::sig
-    s2_rm["s2_rm\n(reg, 3)"]:::sig
-    s2_result_sgn["s2_result_sgn\n(reg, 1)"]:::sig
-    s2_result_exp["s2_result_exp\n(reg, 8)"]:::sig
-    s2_result_sig["s2_result_sig\n(reg, 50)"]:::sig
-    s2_dp_result_exp["s2_dp_result_exp\n(reg, 11)"]:::sig
-    s2_dp_result_sig["s2_dp_result_sig\n(reg, 106)"]:::sig
-    s2_fflags["s2_fflags\n(reg, 5)"]:::sig
-    s2_int_src["s2_int_src\n(reg, 64)"]:::sig
-    s2_is_nan["s2_is_nan\n(reg, 1)"]:::sig
-    s2_is_inf["s2_is_inf\n(reg, 1)"]:::sig
-    s2_is_zero["s2_is_zero\n(reg, 1)"]:::sig
-    s2_special_result["s2_special_result\n(reg, 64)"]:::sig
-    s2_special_valid["s2_special_valid\n(reg, 1)"]:::sig
-    s3_valid["s3_valid\n(reg, 1)"]:::sig
-    s3_fop["s3_fop\n(reg, 5)"]:::sig
-    s3_fmt["s3_fmt\n(reg, 2)"]:::sig
-    s3_rm["s3_rm\n(reg, 3)"]:::sig
-    s3_result_sgn["s3_result_sgn\n(reg, 1)"]:::sig
-    s3_result_exp["s3_result_exp\n(reg, 9)"]:::sig
-    s3_result_sig["s3_result_sig\n(reg, 26)"]:::sig
-    s3_dp_result_exp["s3_dp_result_exp\n(reg, 12)"]:::sig
-    s3_dp_result_sig["s3_dp_result_sig\n(reg, 56)"]:::sig
-    s3_fflags["s3_fflags\n(reg, 5)"]:::sig
-    s3_special_result["s3_special_result\n(reg, 64)"]:::sig
-    s3_special_valid["s3_special_valid\n(reg, 1)"]:::sig
-    s3_is_nan["s3_is_nan\n(reg, 1)"]:::sig
-    s3_is_inf["s3_is_inf\n(reg, 1)"]:::sig
-    s3_is_zero["s3_is_zero\n(reg, 1)"]:::sig
-    sp_lzc["sp_lzc\n(reg, 6)"]:::sig
+    subgraph Inputs
+        valid["valid_in"]
+        src1["fp_src1"]
+        src2["fp_src2"]
+        rm["rm"]
+    end
+    subgraph FPU["rv_fpu"]
+        unpack["Unpack logic"]
+        alu["Shared Datapath"]
+        round["Rounding Logic"]
+    end
+    subgraph Outputs
+        res["fp_result"]
+        done["fpu_done"]
+        flags["fflags"]
+    end
+    valid --> unpack
+    src1 --> unpack
+    src2 --> unpack
+    rm --> round
+    unpack --> alu
+    alu --> round
+    round --> res
+    round --> done
+    round --> flags
 ```
