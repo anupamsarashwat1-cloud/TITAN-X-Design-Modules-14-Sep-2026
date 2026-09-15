@@ -32,6 +32,13 @@ The `axi_rom` module implements an AXI4 Read-Only Memory, primarily serving as t
 
 The ROM operates exclusively as an AXI4 slave, exposing only the read channels (AR and R). Internally, it implements a synchronous memory array indexed by the incoming AXI address (`s_araddr`). When an `s_arvalid` request is captured, it registers the address and ID, asserts `s_rvalid` and `s_rlast` on the following cycles, and outputs the requested 64-bit data word along with an OKAY `s_rresp`. Write channels (AW, W, B) are intentionally omitted to enforce its read-only nature at the hardware level.
 
+## Memory & Firmware Files
+
+| File | Format | Size | Description |
+|------|--------|------|-------------|
+| [`firmware.hex`](firmware.hex) | Verilog `$readmemh` Hex | 56 lines | Boot ROM firmware binary that executes upon reset at `0x1000_0000`, initializes the UART 16550 baud rate generator, and outputs the system boot banner (`TITAN-X Booting from 0x10000000...`) |
+| [`boot.mem`](boot.mem) | Verilog `$readmemh` Mem | 85 lines | Primary software boot stage memory payload |
+
 ## Hierarchical Block Diagram
 
 ```mermaid

@@ -69,6 +69,19 @@ The `rv_core_top` module is the top-level retirement spine of the SMVDU-TitanX R
 ## Functionality
 The `rv_core_top` module wires together the 5 pipeline stages: `rv_fetch`, `rv_decode`, `rv_execute`, `rv_mem`, and `rv_writeback`. It routes AXI4 memory interfaces out to the top level for both instruction fetching and data accesses. It implements a pipeline stall mechanism that reacts to memory stalls and multicycle operations like division or multiplication. Additionally, the core handles data hazards by routing forwarding paths from the execute, memory, and writeback stages back to the decode operands.
 
+## Instruction Memory (.hex) & Golden Trace (.mem) Suites
+
+The directory contains 6 self-checking test suites loaded via `$readmemh` into the core instruction memory alongside their golden state trace files:
+
+| Test Suite | Program Binary (`.hex`) | Expected GPRs (`.mem`) | Memory Address Trace (`.mem`) | Memory Value Trace (`.mem`) | Metadata (`.mem`) |
+|------------|-------------------------|------------------------|-------------------------------|-----------------------------|-------------------|
+| **Base RV64I** | [`tb_imem.hex`](tb_imem.hex) | [`tb_expected_regs.mem`](tb_expected_regs.mem) | [`tb_expected_maddr.mem`](tb_expected_maddr.mem) | [`tb_expected_mval.mem`](tb_expected_mval.mem) | [`tb_expected_meta.mem`](tb_expected_meta.mem) |
+| **RISC-V Compliance** | [`tb_compliance_imem.hex`](tb_compliance_imem.hex) | [`tb_compliance_expected_regs.mem`](tb_compliance_expected_regs.mem) | [`tb_compliance_expected_maddr.mem`](tb_compliance_expected_maddr.mem) | [`tb_compliance_expected_mval.mem`](tb_compliance_expected_mval.mem) | [`tb_compliance_expected_meta.mem`](tb_compliance_expected_meta.mem) |
+| **Privileged / CSR** | [`tb_csr_imem.hex`](tb_csr_imem.hex) | [`tb_csr_expected_regs.mem`](tb_csr_expected_regs.mem) | [`tb_csr_expected_maddr.mem`](tb_csr_expected_maddr.mem) | [`tb_csr_expected_mval.mem`](tb_csr_expected_mval.mem) | [`tb_csr_expected_meta.mem`](tb_csr_expected_meta.mem) |
+| **Interrupts / Traps** | [`tb_irq_imem.hex`](tb_irq_imem.hex) | [`tb_irq_expected_regs.mem`](tb_irq_expected_regs.mem) | [`tb_irq_expected_maddr.mem`](tb_irq_expected_maddr.mem) | [`tb_irq_expected_mval.mem`](tb_irq_expected_mval.mem) | [`tb_irq_expected_meta.mem`](tb_irq_expected_meta.mem) |
+| **M-Extension (MUL/DIV)** | [`tb_mext_imem.hex`](tb_mext_imem.hex) | [`tb_mext_expected_regs.mem`](tb_mext_expected_regs.mem) | [`tb_mext_expected_maddr.mem`](tb_mext_expected_maddr.mem) | [`tb_mext_expected_mval.mem`](tb_mext_expected_mval.mem) | [`tb_mext_expected_meta.mem`](tb_mext_expected_meta.mem) |
+| **64-bit Word Ops** | [`tb_wops_imem.hex`](tb_wops_imem.hex) | [`tb_wops_expected_regs.mem`](tb_wops_expected_regs.mem) | [`tb_wops_expected_maddr.mem`](tb_wops_expected_maddr.mem) | [`tb_wops_expected_mval.mem`](tb_wops_expected_mval.mem) | [`tb_wops_expected_meta.mem`](tb_wops_expected_meta.mem) |
+
 ## Hierarchical Block Diagram
 ```mermaid
 graph TD
